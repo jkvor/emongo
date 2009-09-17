@@ -21,38 +21,125 @@
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo).
--compile(export_all).
+-behaviour(gen_server).
 
-show_dbs() -> ok.
+-export([start_link/0, init/1, handle_call/3, handle_cast/2, 
+		 handle_info/2, terminate/2, code_change/3]).
 
-show_collections(Database)
+-export([find/2, find_one/2, insert/2, save/2, remove/2]).
 
-show_users(Database) ->
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
+start_link() ->
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+		
+%%show_dbs() -> ok.
 
-show_profile(Database) ->
+%%show_collections(Database) -> ok.
 
-use_db(PoolId) ->
+%%show_users(Database) -> ok.
 
-find(PoolId) ->
+%%show_profile(Database) -> ok.
+
+%%use_db(PoolId) -> ok.
+
+find(PoolId, {obj, Props}) ->
+	gen_server:call(?MODULE, {PoolId, {find, {obj, Props}}}, infinity).
+
+find_one(PoolId, {obj, Props}) -> ok.
+
+insert(PoolId, {obj, Props}) -> ok.
+
+%%update
+
+save(PoolId, {obj, Props}) -> ok.
+
+remove(PoolId, {obj, Props}) -> ok.
+
+%%ensure_index
+
+%%count
+
+%%drop_collection
+
+%%clear
+
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, State} |
+%%                         {ok, State, Timeout} |
+%%                         ignore               |
+%%                         {stop, Reason}
+%% Description: Initiates the server
+%%--------------------------------------------------------------------
+init(_) ->
+	{ok, []}.
+
+%%--------------------------------------------------------------------
+%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
+%%                                      {reply, Reply, State, Timeout} |
+%%                                      {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, Reply, State} |
+%%                                      {stop, Reason, State}
+%% Description: Handling call messages
+%%--------------------------------------------------------------------
+handle_call({PoolId, {find, {obj, Props}}}, _From, Pools) ->
+	Pool = proplists:get_value(PoolId, Pools),
 	
-find(PoolId, )
+	{reply, ok, Pools};
+	
+	
 
-find_one
+	
+handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 
-insert
+%%--------------------------------------------------------------------
+%% Function: handle_cast(Msg, State) -> {noreply, State} |
+%%                                      {noreply, State, Timeout} |
+%%                                      {stop, Reason, State}
+%% Description: Handling cast messages
+%%--------------------------------------------------------------------
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
-update
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%                                       {noreply, State, Timeout} |
+%%                                       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
+handle_info(_Info, State) ->
+    {noreply, State}.
 
-save
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    ok.
 
-remove
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
-ensure_index
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 
-count
-
-drop_collection
-
-clear
 
 
