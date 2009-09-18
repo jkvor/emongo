@@ -22,13 +22,31 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_packet).
 
--export([insert/4, decode_response/1]).
+-export([insert/4, update/6, decode_response/1]).
 
 -include("emongo.hrl").
 	
-insert(Database, Collection, ReqID, {obj, Props}) ->
+update(Database, Collection, ReqID, Upsert, {obj, _}=Selector, {obj, _}=Obj) ->
 	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	EncodedDocument = mongodb_bson:encode({obj, Props}),
+	EncodedSelector = mongodb_bson:encode(Selector),
+	EncodedDocument = mongodb_bson:encode(Obj),
+	BinUpsert = if Upsert == true -> 1; true -> 0 end,
+	Message = <<0:32, FullName/binary, BinUpsert:32/little-signed, EncodedSelector/binary, EncodedDocument/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_UPDATE:32/little-signed, Message/binary>>.
+
+insert(Database, Collection, ReqID, {obj, _}=Obj) ->
+	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	EncodedDocument = mongodb_bson:encode(Obj),
+	Message = <<0:32, FullName/binary, EncodedDocument/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
+
+query(Database, Collection, ReqID, Opts, NumToSkip, NumToReturn, {obj, _}=Obj, {obj, _}=FieldSelector) ->
+	BinOps = lists:foldl
+	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	EncodedDocument = mongodb_bson:encode(Obj),
+	EncodedFieldSelector = if FieldSelector == {obj, []} -> <<>>; _ -> mongodb_bson:encode(FieldSelector) end,
 	Message = <<0:32, FullName/binary, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.

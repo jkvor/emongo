@@ -10,3 +10,8 @@
 -define(OP_GET_MORE, 2005).
 -define(OP_DELETE, 2006).
 -define(OP_KILL_CURSORS, 2007).
+
+-define(TAILABLE_CURSOR, 2).
+-define(SLAVE_OK, 4).
+-define(OPLOG, 8).
+-define(NO_CURSOR_TIMEOUT, 16).
