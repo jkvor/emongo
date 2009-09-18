@@ -22,7 +22,8 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_packet).
 
--export([insert/4, update/6, decode_response/1]).
+-export([update/6, insert/4, do_query/4, get_more/5, 
+		 delete/4, kill_cursors/2, msg/2, decode_response/1]).
 
 -include("emongo.hrl").
 	
@@ -42,15 +43,47 @@ insert(Database, Collection, ReqID, {obj, _}=Obj) ->
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
 
-query(Database, Collection, ReqID, Opts, NumToSkip, NumToReturn, {obj, _}=Obj, {obj, _}=FieldSelector) ->
-	BinOps = lists:foldl
+do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
+	OptsSum = lists:foldl(fun(X, Acc) -> Acc+X end, 0, Query#emo_query.opts),
 	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	EncodedDocument = mongodb_bson:encode(Obj),
-	EncodedFieldSelector = if FieldSelector == {obj, []} -> <<>>; _ -> mongodb_bson:encode(FieldSelector) end,
-	Message = <<0:32, FullName/binary, EncodedDocument/binary>>,
+	EncodedDocument = if 
+		is_binary(Query#emo_query.q) -> Query#emo_query.q; 
+		true -> mongodb_bson:encode(Query#emo_query.q)
+	end,
+	EncodedFieldSelector = if 
+		Query#emo_query.field_selector == [] -> <<>>; 
+		true -> mongodb_bson:encode(Query#emo_query.field_selector) 
+	end,
+	Message = <<OptsSum:32/little-signed, FullName/binary, 
+				(Query#emo_query.num_to_skip):32/little-signed, 
+				(Query#emo_query.num_to_return):32/little-signed, 
+				EncodedDocument/binary, EncodedFieldSelector/binary>>,
 	Length = byte_size(Message),
-    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
 
+get_more(Database, Collection, ReqID, NumToReturn, CursorID) ->
+	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	Message = <<0:32, FullName/binary, NumToReturn:32/little-signed, CursorID:64/little-signed>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_GET_MORE:32/little-signed, Message/binary>>.
+	
+delete(Database, Collection, ReqID, {obj, _}=Selector) ->
+	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	EncodedDocument = mongodb_bson:encode(Selector),
+	Message = <<0:32, FullName/binary, 0:32, EncodedDocument/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_DELETE:32/little-signed, Message/binary>>.
+
+kill_cursors(ReqID, CursorIDs) ->
+	CursorIDsBin = lists:foldl(fun(ID, Bin) -> <<Bin/binary, ID:64/little-signed>> end, <<>>, CursorIDs),
+	Message = <<0:32, (length(CursorIDs)):32/little-signed, CursorIDsBin/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_KILL_CURSORS:32/little-signed, Message/binary>>.
+
+msg(ReqID, Message) ->
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_MSG:32/little-signed, Message/binary>>.
+	
 decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/little-signed, Op:32/little-signed, Message/binary>>) ->
 	<<RespFlag:32/little-signed, 
 	  CursorID:64/little-signed, 
@@ -59,9 +92,9 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 	  Documents/binary>> = Message,
 	#response{
 		header = {header, Length, ReqID, RespTo, Op}, 
-		responseFlag = RespFlag, 
-		cursorID = CursorID, 
-		startingFrom = StartingFrom, 
-		numberReturned = NumRet, 
-		documents = mongodb_bson:decode(Documents)
+		response_flag = RespFlag, 
+		cursor_id = CursorID, 
+		starting_from = StartingFrom, 
+		number_returned = NumRet, 
+		documents = if Documents == <<>> -> []; true -> mongodb_bson:decode(Documents) end
 	}.

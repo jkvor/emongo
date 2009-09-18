@@ -22,7 +22,7 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_conn).
 
--export([start_link/2, init/3, send/3, send_recv/3]).
+-export([start_link/2, init/3, send/3, send_recv/4]).
 
 -record(request, {req_id, requestor}).
 -record(state, {socket, requests}).
@@ -38,10 +38,16 @@ init(Host, Port, Parent) ->
 	loop(#state{socket=Socket, requests=[]}).
 	
 send(Pid, ReqID, Packet) ->
-	gen:call(Pid, '$emongo_conn_send', {ReqID, Packet}).
+	case gen:call(Pid, '$emongo_conn_send', {ReqID, Packet}) of
+		{ok, Result} -> Result;
+		{error, Reason} -> exit(Reason)
+	end.
 	
-send_recv(Pid, ReqID, Packet) ->
-	gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}).
+send_recv(Pid, ReqID, Packet, Timeout) ->
+	case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
+		{ok, Result} -> Result;
+		{error, Reason} -> exit(Reason)
+	end.
 	
 loop(State) ->
 	receive
@@ -51,18 +57,17 @@ loop(State) ->
 			loop(State);
 		{'$emongo_conn_send_recv', {From, Mref}, {ReqID, Packet}} -> 
 			gen_tcp:send(State#state.socket, Packet),
-			gen:reply({From, Mref}, ok),
 			Request = #request{req_id=ReqID, requestor={From, Mref}},
-			State1 = State#state{requests=[Request|State#state.requests]},
+			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
 			loop(State1);
 		{tcp, _Sock, Data} ->
 			Resp = emongo_packet:decode_response(Data),
-			ResponseTo = (Resp#response.header)#header.responseTo,
+			ResponseTo = (Resp#response.header)#header.response_to,
 			case proplists:get_value(ResponseTo, State#state.requests) of
 				undefined ->
 					ok;
-				Requestor ->
-					gen:reply(Requestor, Resp)
+				Request ->
+					gen:reply(Request#request.requestor, Resp)
 			end,
 			loop(State)
 	end.

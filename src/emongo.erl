@@ -26,9 +26,11 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, add_pool/5, insert/3]).
+-export([pools/0, add_pool/5, find/3, find/4, insert/3]).
 
 -include("emongo.hrl").
+
+-record(state, {pools}).
 
 %%====================================================================
 %% API
@@ -56,8 +58,20 @@ add_pool(PoolId, Host, Port, Database, Size) ->
 
 %%use_db(PoolId) -> ok.
 
-%find(PoolId, Collection, {obj, _}=Obj) ->
+find(PoolId, Collection, Obj) ->
+	find(PoolId, Collection, Obj, ?TIMEOUT).
+	
+find(PoolId, Collection, {obj, _}=Obj, Timeout) ->
+	find(PoolId, Collection, #emo_query{q=Obj}, Timeout);
 
+find(PoolId, Collection, Bin, Timeout) when is_binary(Bin) ->
+	find(PoolId, Collection, #emo_query{q=Bin}, Timeout);
+	
+find(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
+	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
+	
 %find_one(PoolId, Collection, {obj, _}=Obj) ->
 
 insert(PoolId, Collection, {obj, _}=Obj) ->
@@ -89,7 +103,8 @@ insert(PoolId, Collection, {obj, _}=Obj) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init(_) ->
-	{ok, initialize_pools()}.
+	Pools = initialize_pools(),
+	{ok, #state{pools=Pools}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -100,10 +115,10 @@ init(_) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(pools, _From, Pools) ->
-	{reply, Pools, Pools};
+handle_call(pools, _From, State) ->
+	{reply, State#state.pools, State};
 	
-handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, Pools) ->
+handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=Pools}=State) ->
 	{Result, Pools1} = 
 		case proplists:is_defined(PoolId, Pools) of
 			true ->
@@ -119,14 +134,18 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, Pools) ->
 				Pool1 = open_connections(Pool),
 				{ok, [{PoolId, Pool1}|Pools]}
 		end,
-	{reply, Result, Pools1};
+	{reply, Result, State#state{pools=Pools1}};
 	
-handle_call({pid, PoolId}, _From, Pools) ->
-	Pool = proplists:get_value(PoolId, Pools),
-	Pool1 = Pool#pool{req_id = ((Pool#pool.req_id)+1)},
-	OtherPools = proplists:delete(PoolId, Pools),
-	Pid = get_conn_pid(Pool),
-	{reply, {Pid, Pool}, [Pool1|OtherPools]};
+handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
+	case get_pool(PoolId, Pools) of
+		undefined ->
+			{reply, {undefined, undefined}, State};
+		{Pool, Others} ->
+			Pid = get_conn_pid(Pool),
+			Pool1 = Pool#pool{req_id = ((Pool#pool.req_id)+1)},
+			Pools1 = [{PoolId, Pool1}|Others],
+			{reply, {Pid, Pool}, State#state{pools=Pools1}}
+	end;
 	
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 
@@ -192,3 +211,22 @@ open_connections(Pool) ->
 	Pool#pool{conn_pids=ConnPids}.
 
 get_conn_pid(#pool{conn_pids=[Pid|_]}) -> Pid.
+
+get_pool(PoolId, Pools) ->
+	get_pool(PoolId, Pools, []).
+	
+get_pool(_, [], _) ->
+	undefined;
+		
+get_pool(PoolId, [{PoolId, Pool}|Tail], Others) ->
+	{Pool, lists:append(Tail, Others)};
+	
+get_pool(PoolId, [Pool|Tail], Others) ->
+	get_pool(PoolId, Tail, [Pool|Others]).
+	
+	
+	
+	
+	
+	
+	
