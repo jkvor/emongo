@@ -26,7 +26,9 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([find/2, find_one/2, insert/2, save/2, remove/2]).
+-export([pools/0, add_pool/5, insert/3]).
+
+-include("emongo.hrl").
 
 %%====================================================================
 %% API
@@ -38,6 +40,12 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 		
+pools() ->
+	gen_server:call(?MODULE, pools, infinity).
+	
+add_pool(PoolId, Host, Port, Database, Size) ->
+	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
+	
 %%show_dbs() -> ok.
 
 %%show_collections(Database) -> ok.
@@ -48,26 +56,26 @@ start_link() ->
 
 %%use_db(PoolId) -> ok.
 
-find(PoolId, {obj, Props}) ->
-	gen_server:call(?MODULE, {PoolId, {find, {obj, Props}}}, infinity).
+%find(PoolId, Collection, {obj, _}=Obj) ->
 
-find_one(PoolId, {obj, Props}) -> ok.
+%find_one(PoolId, Collection, {obj, _}=Obj) ->
 
-insert(PoolId, {obj, Props}) -> ok.
+insert(PoolId, Collection, {obj, _}=Obj) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Obj),
+	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
 %%update
 
-save(PoolId, {obj, Props}) -> ok.
+%save(PoolId, {obj, Props}) -> ok.
 
-remove(PoolId, {obj, Props}) -> ok.
+%remove(PoolId, {obj, Props}) -> ok.
 
 %%ensure_index
 
 %%count
 
-%%drop_collection
-
-%%clear
+%drop_collection(PoolId, Collection) when is_atom(PoolId), is_list(Collection) ->
 
 %%====================================================================
 %% gen_server callbacks
@@ -81,7 +89,7 @@ remove(PoolId, {obj, Props}) -> ok.
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init(_) ->
-	{ok, []}.
+	{ok, initialize_pools()}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -92,13 +100,33 @@ init(_) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({PoolId, {find, {obj, Props}}}, _From, Pools) ->
+handle_call(pools, _From, Pools) ->
+	{reply, Pools, Pools};
+	
+handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, Pools) ->
+	{Result, Pools1} = 
+		case proplists:is_defined(PoolId, Pools) of
+			true ->
+				{{error, pool_already_exists}, Pools};
+			false ->
+				Pool = #pool{
+					id=PoolId,
+					host=Host,
+					port=Port,
+					database=Database,
+					size=Size
+				},
+				Pool1 = open_connections(Pool),
+				{ok, [{PoolId, Pool1}|Pools]}
+		end,
+	{reply, Result, Pools1};
+	
+handle_call({pid, PoolId}, _From, Pools) ->
 	Pool = proplists:get_value(PoolId, Pools),
-	
-	{reply, ok, Pools};
-	
-	
-
+	Pool1 = Pool#pool{req_id = ((Pool#pool.req_id)+1)},
+	OtherPools = proplists:delete(PoolId, Pools),
+	Pid = get_conn_pid(Pool),
+	{reply, {Pid, Pool}, [Pool1|OtherPools]};
 	
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 
@@ -140,6 +168,27 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+initialize_pools() ->
+	case application:get_env(emongo, pools) of
+		undefined ->
+			[];
+		{ok, Pools} ->
+			[begin
+				Pool = #pool{
+					id = PoolId, 
+					size = proplists:get_value(size, Props, 1),
+					host = proplists:get_value(host, Props, "localhost"), 
+					port = proplists:get_value(port, Props, 27017), 
+					database = proplists:get_value(database, Props, "test")
+				},
+				{PoolId, open_connections(Pool)}
+			 end || {PoolId, Props} <- Pools]
+	end.
+	
+open_connections(Pool) ->
+	ConnPids = [begin
+		emongo_conn:start_link(Pool#pool.host, Pool#pool.port)
+	 end || _ <- lists:seq(1, Pool#pool.size)],
+	Pool#pool{conn_pids=ConnPids}.
 
-
-
+get_conn_pid(#pool{conn_pids=[Pid|_]}) -> Pid.

@@ -20,33 +20,30 @@
 %% WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 %% OTHER DEALINGS IN THE SOFTWARE.
--module(emongo_app).
--behaviour(application).
+-module(emongo_packet).
 
--export([start/2,stop/1, init/1, build_rel/0]).
+-export([insert/4, decode_response/1]).
 
-start(_, _) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+-include("emongo.hrl").
+	
+insert(Database, Collection, ReqID, {obj, Props}) ->
+	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	EncodedDocument = mongodb_bson:encode({obj, Props}),
+	Message = <<0:32, FullName/binary, EncodedDocument/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
 
-stop(_) -> ok.
-
-init(_) ->
-   {ok, {{one_for_one, 10, 10}, [
-       {emongo, {emongo, start_link, []}, permanent, 5000, worker, [emongo]}
-   ]}}.
-
-build_rel() ->
-    {ok, FD} = file:open("emongo.rel", [write]),
-    RelInfo = {release,
-        {"emongo", "0.3"},
-        {erts, "5.7.2"}, [
-            {kernel, "2.13.2"},
-            {stdlib, "1.16.2"},
-            {sasl, "2.1.6"},
-            {emongo, "0.0.1"}
-        ]
-    },
-    io:format(FD, "~p.", [RelInfo]),
-    file:close(FD),
-    systools:make_script("emongo", [local]),
-    ok.
+decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/little-signed, Op:32/little-signed, Message/binary>>) ->
+	<<RespFlag:32/little-signed, 
+	  CursorID:64/little-signed, 
+	  StartingFrom:32/little-signed, 
+	  NumRet:32/little-signed, 
+	  Documents/binary>> = Message,
+	#response{
+		header = {header, Length, ReqID, RespTo, Op}, 
+		responseFlag = RespFlag, 
+		cursorID = CursorID, 
+		startingFrom = StartingFrom, 
+		numberReturned = NumRet, 
+		documents = mongodb_bson:decode(Documents)
+	}.
