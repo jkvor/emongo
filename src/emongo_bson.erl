@@ -39,10 +39,10 @@ encode_key_value(Key, Val) when is_float(Val) ->
 	<<1, Key1/binary, 0, Val:64/little-signed-float>>;
 
 %% STRING
-encode_key_value(Key, Val) when (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) orelse Val == [] ->
+encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
 	Key1 = encode_key(Key),
 	Val1 = unicode:characters_to_binary(Val),
-	<<2, Key1/binary, 0, Val1/binary>>;
+	<<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>;
 	
 %% NESTED OBJECT
 encode_key_value(Key, [{_,_}|_]=Val) ->
@@ -60,15 +60,21 @@ encode_key_value(Key, Val) when is_list(Val) ->
 	encode_key_value(Key, {array, Val});
 
 %% BINARY
-encode_key_value(Key, Val) when is_binary(Val) ->	
+encode_key_value(Key, {binary, 2, Val}) when is_binary(Val) ->
 	Key1 = encode_key(Key),
-	<<5, Key1/binary, 0, Val/binary>>;
+	<<5, Key1/binary, 0, (byte_size(Val)+4):32/little-signed, 2:8, (size(Val)):32/little-signed, Val/binary>>;
+
+encode_key_value(Key, {binary, SubType, Val}) when is_integer(SubType), is_binary(Val) ->
+	Key1 = encode_key(Key),
+	<<5, Key1/binary, 0, (byte_size(Val)):32/little-signed, SubType:8, Val/binary>>;
 		
 %% OID
-encode_key_value(Key, {oid, Val}) ->
+encode_key_value(Key, {oid, <<First:8/little-binary-unit:8, Second:4/little-binary-unit:8>>}) ->
 	Key1 = encode_key(Key),
-	Val1 = iolist_to_binary(Val),
-	<<7, Key1/binary, 0, Val1/binary>>;
+	FirstReversed = lists:reverse(binary_to_list(First)),
+	SecondReversed = lists:reverse(binary_to_list(Second)),
+	OID = list_to_binary(lists:append(FirstReversed, SecondReversed)),
+	<<7, Key1/binary, 0, OID/binary>>;
 	
 %% BOOL
 encode_key_value(Key, true) ->
@@ -107,7 +113,7 @@ encode_key_value(Key, Val) when is_integer(Val) ->
 	<<16, Key1/binary, 0, Val:32/little-signed>>;
 
 encode_key_value(_, _) ->
-	<<>>.
+	exit(oh_balls).
 	
 encode_key(Key) when is_atom(Key) ->
 	atom_to_binary(Key, utf8);
@@ -118,5 +124,80 @@ encode_key(Key) when is_list(Key) ->
 encode_key(Key) when is_integer(Key) ->
 	encode_key(integer_to_list(Key)).
 
-decode(_) -> ok.
+decode(<<Size:32/little-signed, Rest/binary>>) ->
+	Size1 = Size-5,
+	<<Bin:Size1/binary, _/binary>> = Rest,
+	decode(Bin, []).
+	
+decode(<<>>, Acc) ->
+	lists:reverse(Acc);
+	
+decode(<<Type:8/little-signed, Tail1/binary>>, Acc) ->
+	{Key, Tail2} = decode_key(Tail1, <<>>),
+	{Val, Tail3} = decode_value(Type, Tail2),
+	decode(Tail3, [{Key, Val}|Acc]).
 
+decode_key(<<0, Tail/binary>>, Acc) ->
+	{Acc, Tail};
+	
+decode_key(<<H, Tail/binary>>, Acc) ->
+	decode_key(Tail, <<Acc/binary, H/binary>>).
+	
+%% DOUBLE
+decode_value(1, <<Val:64/little-signed-float, Tail/binary>>) ->
+	{Val, Tail};
+	
+%% STRING
+decode_value(2, <<Size:32/little-signed, Tail1/binary>>) ->
+	Size1 = Size-1,
+	<<Val:Size1/binary, 0, Tail2/binary>> = Tail1,
+	{Val, Tail2};
+	
+%% OBJECT
+decode_value(3, Bin) ->
+	decode(Bin);
+
+%% DATA ARRAY
+decode_value(4, Bin) ->
+	{Val, Tail} = decode(Bin),
+	{{array, [V || {_, V} <- Val]}, Tail};
+
+%% BINARY
+decode_value(5, <<_Size:32/little-signed, 2:8/little, BinSize:32/little-signed, BinData:BinSize/binary-little-unit:8, Tail/binary>>) ->
+  	{{binary, 2, BinData}, Tail};
+
+decode_value(5, <<Size:32/little-signed, SubType:8/little, BinData:Size/binary-little-unit:8, Tail/binary>>) ->
+  	{{binary, SubType, BinData}, Tail};
+
+%% OID
+decode_value(7, <<First:8/little-binary-unit:8, Second:4/little-binary-unit:8, Tail/binary>>) ->
+	FirstReversed = lists:reverse(binary_to_list(First)),
+	SecondReversed = lists:reverse(binary_to_list(Second)),
+	OID = list_to_binary(lists:append(FirstReversed, SecondReversed)),
+	{{oid, OID}, Tail};
+	
+%% BOOL	
+decode_value(8, <<0:8, Tail/binary>>) ->
+	{false, Tail};
+	
+decode_value(8, <<1:8, Tail/binary>>) ->
+	{true, Tail};
+
+%% DATE
+decode_value(9, <<MSecs:64/little-signed, Tail/binary>>) ->
+	UnixTime = trunc(MSecs / 1000),
+	MegaSecs = trunc(UnixTime / 1000000),
+	Secs = UnixTime - (MegaSecs * 1000000),
+	MicroSecs = (MSecs - (UnixTime * 1000)) * 1000,
+	{{MegaSecs, Secs, MicroSecs}, Tail};
+
+%% VOID
+decode_value(10, Tail) ->
+	{undefined, Tail};
+
+%% INT
+decode_value(16, <<Int:32/little-signed, Tail/binary>>) ->
+	{Int, Tail};
+		
+decode_value(_, _) ->
+	exit(oh_fuck).
