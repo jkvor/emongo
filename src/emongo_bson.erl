@@ -22,6 +22,7 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_bson).
 -export([encode/1, decode/1]).
+-compile(export_all).
 
 encode(undefined) ->
 	<<>>;
@@ -140,8 +141,8 @@ decode(<<Type:8/little-signed, Tail1/binary>>, Acc) ->
 decode_key(<<0, Tail/binary>>, Acc) ->
 	{Acc, Tail};
 	
-decode_key(<<H, Tail/binary>>, Acc) ->
-	decode_key(Tail, <<Acc/binary, H/binary>>).
+decode_key(<<H:8, Tail/binary>>, Acc) ->
+	decode_key(Tail, <<Acc/binary, H>>).
 	
 %% DOUBLE
 decode_value(1, <<Val:64/little-signed-float, Tail/binary>>) ->

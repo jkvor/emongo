@@ -26,7 +26,8 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, add_pool/5, find/3, find/4, insert/3]).
+-export([pools/0, add_pool/5, find/3, find/4, find_one/3, find_one/4, 
+		 insert/3]).
 
 -include("emongo.hrl").
 
@@ -58,25 +59,33 @@ add_pool(PoolId, Host, Port, Database, Size) ->
 
 %%use_db(PoolId) -> ok.
 
-find(PoolId, Collection, Obj) ->
-	find(PoolId, Collection, Obj, ?TIMEOUT).
+find(PoolId, Collection, Document) ->
+	find(PoolId, Collection, Document, ?TIMEOUT).
 	
-find(PoolId, Collection, {obj, _}=Obj, Timeout) ->
-	find(PoolId, Collection, #emo_query{q=Obj}, Timeout);
-
-find(PoolId, Collection, Bin, Timeout) when is_binary(Bin) ->
-	find(PoolId, Collection, #emo_query{q=Bin}, Timeout);
+find(PoolId, Collection, Document, Timeout) when is_list(Document) ->
+	find(PoolId, Collection, #emo_query{q=Document}, Timeout);
+	
+find(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
+	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], num_to_return=1}, Timeout);
 	
 find(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
+	io:format("packet ~p~n", [Packet]),
 	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
 	
-%find_one(PoolId, Collection, {obj, _}=Obj) ->
+find_one(PoolId, Collection, Document) ->
+	find_one(PoolId, Collection, Document, ?TIMEOUT).
 
-insert(PoolId, Collection, {obj, _}=Obj) ->
+find_one(PoolId, Collection, Document, Timeout) when is_list(Document) ->
+	find(PoolId, Collection, #emo_query{q=Document, num_to_return=1}, Timeout);
+
+find_one(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
+	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], num_to_return=1}, Timeout).
+
+insert(PoolId, Collection, Document) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Obj),
+	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Document),
 	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
 %%update

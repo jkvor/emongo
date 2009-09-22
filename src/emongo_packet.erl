@@ -27,34 +27,34 @@
 
 -include("emongo.hrl").
 	
-update(Database, Collection, ReqID, Upsert, {obj, _}=Selector, {obj, _}=Obj) ->
-	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	EncodedSelector = mongodb_bson:encode(Selector),
-	EncodedDocument = mongodb_bson:encode(Obj),
+update(Database, Collection, ReqID, Upsert, Selector, Document) ->
+	FullName = unicode:characters_to_binary([Database, ".", Collection]),
+	EncodedSelector = emongo_bson:encode(Selector),
+	EncodedDocument = emongo_bson:encode(Document),
 	BinUpsert = if Upsert == true -> 1; true -> 0 end,
-	Message = <<0:32, FullName/binary, BinUpsert:32/little-signed, EncodedSelector/binary, EncodedDocument/binary>>,
+	Message = <<0:32, FullName/binary, 0, BinUpsert:32/little-signed, EncodedSelector/binary, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_UPDATE:32/little-signed, Message/binary>>.
 
-insert(Database, Collection, ReqID, {obj, _}=Obj) ->
-	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	EncodedDocument = mongodb_bson:encode(Obj),
-	Message = <<0:32, FullName/binary, EncodedDocument/binary>>,
+insert(Database, Collection, ReqID, Document) ->
+	FullName = unicode:characters_to_binary([Database, ".", Collection]),
+	EncodedDocument = emongo_bson:encode(Document),
+	Message = <<0:32, FullName/binary, 0, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
 
 do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
 	OptsSum = lists:foldl(fun(X, Acc) -> Acc+X end, 0, Query#emo_query.opts),
-	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
+	FullName = unicode:characters_to_binary([Database, ".", Collection]),
 	EncodedDocument = if 
 		is_binary(Query#emo_query.q) -> Query#emo_query.q; 
-		true -> mongodb_bson:encode(Query#emo_query.q)
+		true -> emongo_bson:encode(Query#emo_query.q)
 	end,
 	EncodedFieldSelector = if 
 		Query#emo_query.field_selector == [] -> <<>>; 
-		true -> mongodb_bson:encode(Query#emo_query.field_selector) 
+		true -> emongo_bson:encode(Query#emo_query.field_selector) 
 	end,
-	Message = <<OptsSum:32/little-signed, FullName/binary, 
+	Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
 				(Query#emo_query.num_to_skip):32/little-signed, 
 				(Query#emo_query.num_to_return):32/little-signed, 
 				EncodedDocument/binary, EncodedFieldSelector/binary>>,
@@ -62,15 +62,15 @@ do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
 
 get_more(Database, Collection, ReqID, NumToReturn, CursorID) ->
-	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	Message = <<0:32, FullName/binary, NumToReturn:32/little-signed, CursorID:64/little-signed>>,
+	FullName = unicode:characters_to_binary([Database, ".", Collection]),
+	Message = <<0:32, FullName/binary, 0, NumToReturn:32/little-signed, CursorID:64/little-signed>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_GET_MORE:32/little-signed, Message/binary>>.
 	
-delete(Database, Collection, ReqID, {obj, _}=Selector) ->
-	FullName = mongodb_bson:encode_cstring(lists:concat([Database, ".", Collection])),
-	EncodedDocument = mongodb_bson:encode(Selector),
-	Message = <<0:32, FullName/binary, 0:32, EncodedDocument/binary>>,
+delete(Database, Collection, ReqID, Selector) ->
+	FullName = unicode:characters_to_binary([Database, ".", Collection]),
+	EncodedDocument = emongo_bson:encode(Selector),
+	Message = <<0:32, FullName/binary, 0, 0:32, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_DELETE:32/little-signed, Message/binary>>.
 
@@ -96,5 +96,5 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 		cursor_id = CursorID, 
 		starting_from = StartingFrom, 
 		number_returned = NumRet, 
-		documents = if Documents == <<>> -> []; true -> mongodb_bson:decode(Documents) end
+		documents = if Documents == <<>> -> []; true -> emongo_bson:decode(Documents) end
 	}.
