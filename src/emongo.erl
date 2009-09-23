@@ -26,8 +26,11 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, add_pool/5, find/2, find/3, find/4, 
-		 find_one/3, find_one/4, insert/3]).
+-export([pools/0, add_pool/5, find/2, find/3, find/4,
+		 find_all/2, find_all/3, find_all/4, get_more/4,
+		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
+		 insert/3, update/4, update/5, delete/2, delete/3,
+		 count/2]).
 
 -include("emongo.hrl").
 
@@ -59,13 +62,16 @@ add_pool(PoolId, Host, Port, Database, Size) ->
 
 %%use_db(PoolId) -> ok.
 
+%%------------------------------------------------------------------------------
+%% find
+%%------------------------------------------------------------------------------
 find(PoolId, Collection) ->
 	find(PoolId, Collection, [], ?TIMEOUT).
 
 find(PoolId, Collection, Document) ->
 	find(PoolId, Collection, Document, ?TIMEOUT).
 	
-find(PoolId, Collection, Document, Timeout) when is_list(Document) ->
+find(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
 	find(PoolId, Collection, #emo_query{q=Document}, Timeout);
 	
 find(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
@@ -74,32 +80,108 @@ find(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
 find(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	io:format("packet ~p~n", [Packet]),
 	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
+
+%%------------------------------------------------------------------------------
+%% find_all
+%%------------------------------------------------------------------------------
+find_all(PoolId, Collection) ->
+	find_all(PoolId, Collection, [], ?TIMEOUT).
+
+find_all(PoolId, Collection, Document) ->
+	find_all(PoolId, Collection, Document, ?TIMEOUT).
+
+find_all(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
+	find_all(PoolId, Collection, #emo_query{q=Document}, Timeout);
+
+find_all(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
+	Resp = find(PoolId, Collection, Query, Timeout),
+	find_all(PoolId, Collection, Resp, Timeout);
 	
-find_one(PoolId, Collection, Document) ->
+find_all(_PoolId, _Collection, Resp, _Timeout) when is_record(Resp, response), Resp#response.cursor_id == 0 ->
+	Resp;
+	
+find_all(PoolId, Collection, Resp, Timeout) when is_record(Resp, response) ->
+	Resp1 = get_more(PoolId, Collection, Resp#response.cursor_id, Timeout),
+	Documents = lists:append(Resp#response.documents, Resp1#response.documents),
+	find_all(PoolId, Collection, Resp1#response{documents=Documents}, Timeout).
+
+%%------------------------------------------------------------------------------
+%% find_one
+%%------------------------------------------------------------------------------
+find_one(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
 	find_one(PoolId, Collection, Document, ?TIMEOUT).
 
-find_one(PoolId, Collection, Document, Timeout) when is_list(Document) ->
+find_one(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
 	find(PoolId, Collection, #emo_query{q=Document, limit=1}, Timeout);
 
 find_one(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
 	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], limit=1}, Timeout).
 
-insert(PoolId, Collection, Document) ->
+%%------------------------------------------------------------------------------
+%% get_more
+%%------------------------------------------------------------------------------
+get_more(PoolId, Collection, CursorID, Timeout) ->
+	get_more(PoolId, Collection, CursorID, 0, Timeout).
+	
+get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Document),
+	Packet = emongo_packet:get_more(Pool#pool.database, Collection, Pool#pool.req_id, NumToReturn, CursorID),
+	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
+	
+kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
+	kill_cursors(PoolId, [CursorID]);
+	
+kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:kill_cursors(Pool#pool.req_id, CursorIDs),
+	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	
+%%------------------------------------------------------------------------------
+%% insert
+%%------------------------------------------------------------------------------
+insert(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
+	insert(PoolId, Collection, [Document]);
+	
+insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Documents),
 	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
-%%update
+%%------------------------------------------------------------------------------
+%% update
+%%------------------------------------------------------------------------------
+update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
+	update(PoolId, Collection, Selector, Document, false).
+	
+update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:update(Pool#pool.database, Collection, Pool#pool.req_id, Upsert, Selector, Document),
+	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
-%save(PoolId, {obj, Props}) -> ok.
-
-%remove(PoolId, {obj, Props}) -> ok.
+%%------------------------------------------------------------------------------
+%% delete
+%%------------------------------------------------------------------------------
+delete(PoolId, Collection) ->
+	delete(PoolId, Collection, []).
+	
+delete(PoolId, Collection, Selector) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, Selector),
+	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
 %%ensure_index
 
-%%count
+count(PoolId, Collection) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}], limit=1},
+	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
+	case emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
+		#response{documents=[[{<<"n">>,Count}|_]]} ->
+			round(Count);
+		_ ->
+			undefined
+	end.
 
 %drop_collection(PoolId, Collection) when is_atom(PoolId), is_list(Collection) ->
 
@@ -178,15 +260,19 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
+	io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
 	State1 =
 		case get_pool(PoolId, Pools) of
 			undefined ->
 				State;
 			{Pool, Others} ->
+				io:format("delete ~p from ~p~n", [Pid, Pool#pool.conn_pids]),
 				Pids1 = lists:delete(Pid, Pool#pool.conn_pids),
+				io:format("new pids ~p~n", [Pids1]),
 				Pool1 = Pool#pool{conn_pids = Pids1},
 				Pool2 = do_open_connections(Pool1),
 				Pools1 = [{PoolId, Pool2}|Others],
+				io:format("new pool ~p~n", [Pools1]),
 				State#state{pools=Pools1}
 		end,
 	{noreply, State1};

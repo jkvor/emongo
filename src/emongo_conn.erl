@@ -35,7 +35,7 @@ start_link(PoolId, Host, Port) ->
 init(PoolId, Host, Port, Parent) ->
 	Socket = open_socket(Host, Port),
 	proc_lib:init_ack(Parent, self()),
-	loop(#state{pool_id=PoolId, socket=Socket, requests=[]}).
+	loop(#state{pool_id=PoolId, socket=Socket, requests=[]}, <<>>).
 	
 send(Pid, ReqID, Packet) ->
 	case gen:call(Pid, '$emongo_conn_send', {ReqID, Packet}) of
@@ -45,31 +45,40 @@ send(Pid, ReqID, Packet) ->
 	
 send_recv(Pid, ReqID, Packet, Timeout) ->
 	case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
-		{ok, Result} -> Result;
+		{ok, Resp} ->
+			Documents = if 
+				Resp#response.documents == <<>> -> []; 
+				true -> emongo_bson:decode(Resp#response.documents) 
+			end,
+			Resp#response{documents=Documents};
 		{error, Reason} -> exit(Reason)
 	end.
 	
-loop(State) ->
+loop(State, Leftover) ->
 	receive
 		{'$emongo_conn_send', {From, Mref}, {_ReqID, Packet}} ->
 			gen_tcp:send(State#state.socket, Packet),
 			gen:reply({From, Mref}, ok),
-			loop(State);
+			loop(State, Leftover);
 		{'$emongo_conn_send_recv', {From, Mref}, {ReqID, Packet}} -> 
 			gen_tcp:send(State#state.socket, Packet),
 			Request = #request{req_id=ReqID, requestor={From, Mref}},
 			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
-			loop(State1);
+			loop(State1, Leftover);
 		{tcp, _Sock, Data} ->
 			io:format("recv'd ~p~n", [Data]),
-			Resp = emongo_packet:decode_response(Data),
-			ResponseTo = (Resp#response.header)#header.response_to,
-			case find_request(ResponseTo, State#state.requests, []) of
-				{undefined, _} ->
-					exit({unexpected_response, Resp});
-				{Request, Others} ->
-					gen:reply(Request#request.requestor, Resp),
-					loop(State#state{requests=Others})
+			case emongo_packet:decode_response(<<Leftover/binary, Data/binary>>) of
+				undefined ->
+					loop(State, <<Leftover/binary, Data/binary>>);
+				{Resp, Tail} ->
+					ResponseTo = (Resp#response.header)#header.response_to,
+					case find_request(ResponseTo, State#state.requests, []) of
+						{undefined, _} ->
+							exit({unexpected_response, Resp});
+						{Request, Others} ->
+							gen:reply(Request#request.requestor, Resp),
+							loop(State#state{requests=Others}, Tail)
+					end
 			end;
 		{tcp_closed, _Sock} ->
 			exit({State#state.pool_id, tcp_closed});

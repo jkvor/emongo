@@ -36,9 +36,9 @@ update(Database, Collection, ReqID, Upsert, Selector, Document) ->
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_UPDATE:32/little-signed, Message/binary>>.
 
-insert(Database, Collection, ReqID, Document) ->
+insert(Database, Collection, ReqID, Documents) ->
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
-	EncodedDocument = emongo_bson:encode(Document),
+	EncodedDocument = iolist_to_binary([emongo_bson:encode(Document) || Document <- Documents]),
 	Message = <<0:32, FullName/binary, 0, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
@@ -85,16 +85,25 @@ msg(ReqID, Message) ->
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_MSG:32/little-signed, Message/binary>>.
 	
 decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/little-signed, Op:32/little-signed, Message/binary>>) ->
-	<<RespFlag:32/little-signed, 
-	  CursorID:64/little-signed, 
-	  StartingFrom:32/little-signed, 
-	  NumRet:32/little-signed, 
-	  Documents/binary>> = Message,
-	#response{
-		header = {header, Length, ReqID, RespTo, Op}, 
-		response_flag = RespFlag, 
-		cursor_id = CursorID, 
-		offset = StartingFrom, 
-		limit = NumRet, 
-		documents = if Documents == <<>> -> []; true -> emongo_bson:decode(Documents) end
-	}.
+	MsgLen = Length - 16,
+	if 
+		byte_size(Message) < MsgLen ->
+			undefined;
+		true ->
+			DocLen = MsgLen - 20,
+			<<RespFlag:32/little-signed, 
+			  CursorID:64/little-signed, 
+			  StartingFrom:32/little-signed, 
+			  NumRet:32/little-signed, 
+			  Documents:DocLen/binary,
+			  Tail/binary>> = Message,
+			Resp = #response{
+				header = {header, Length, ReqID, RespTo, Op}, 
+				response_flag = RespFlag, 
+				cursor_id = CursorID, 
+				offset = StartingFrom, 
+				limit = NumRet, 
+				documents = Documents
+			},
+			{Resp, Tail}
+	end.

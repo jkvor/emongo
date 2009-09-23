@@ -3,6 +3,19 @@
 -record(response, {header, response_flag, cursor_id, offset, limit, documents}).
 -record(emo_query, {opts=[], offset=0, limit=0, q=[], field_selector=[]}).
 
+-define(IS_DOCUMENT(Doc), (is_list(Doc) andalso (Doc == [] orelse (is_tuple(hd(Doc)) andalso tuple_size(hd(Doc)) == 2)))).
+-define(IS_LIST_OF_DOCUMENTS(Docs), (
+	is_list(Docs) andalso (
+		Docs == [] orelse (
+			is_list(hd(Docs)) andalso (
+				hd(Docs) == [] orelse (
+					is_tuple(hd(hd(Docs))) andalso 
+					tuple_size(hd(hd(Docs))) == 2
+				)
+			)
+		)
+	))).
+
 -define(TIMEOUT, 5000).
 
 -define(OP_REPLY, 1).
