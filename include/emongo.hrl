@@ -1,7 +1,7 @@
 -record(pool, {id, host, port, database, size=1, conn_pids=[], req_id=1}).
 -record(header, {message_length, request_id, response_to, op_code}).
--record(response, {header, response_flag, cursor_id, starting_from, number_returned, documents}).
--record(emo_query, {opts=[], num_to_skip=0, num_to_return=0, q=[], field_selector=[]}).
+-record(response, {header, response_flag, cursor_id, offset, limit, documents}).
+-record(emo_query, {opts=[], offset=0, limit=0, q=[], field_selector=[]}).
 
 -define(TIMEOUT, 5000).
 

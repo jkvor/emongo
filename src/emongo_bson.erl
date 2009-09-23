@@ -24,11 +24,8 @@
 -export([encode/1, decode/1]).
 -compile(export_all).
 
-encode(undefined) ->
-	<<>>;
-	
 encode([]) ->
-	<<>>;
+	<<5,0,0,0,0>>;
 	
 encode([{_,_}|_]=List) when is_list(List) ->
 	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
@@ -108,6 +105,13 @@ encode_key_value(Key, undefined) ->
 	Key1 = encode_key(Key),
 	<<10, Key1/binary, 0>>;
 	
+%% REGEX
+encode_key_value(Key, {regexp, Regexp, Options}) ->
+	Key1 = encode_key(Key),
+	RegexpBin = unicode:characters_to_binary(Regexp),
+	OptionsBin = unicode:characters_to_binary(Options),
+	<<11, Key1/binary, 0, RegexpBin/binary, 0, OptionsBin/binary, 0>>;
+	
 % INT
 encode_key_value(Key, Val) when is_integer(Val) ->
 	Key1 = encode_key(Key),
@@ -115,6 +119,9 @@ encode_key_value(Key, Val) when is_integer(Val) ->
 
 encode_key_value(_, _) ->
 	exit(oh_balls).
+	
+encode_key(Key) when is_binary(Key) ->
+	Key;
 	
 encode_key(Key) when is_atom(Key) ->
 	atom_to_binary(Key, utf8);
@@ -125,18 +132,24 @@ encode_key(Key) when is_list(Key) ->
 encode_key(Key) when is_integer(Key) ->
 	encode_key(integer_to_list(Key)).
 
-decode(<<Size:32/little-signed, Rest/binary>>) ->
-	Size1 = Size-5,
-	<<Bin:Size1/binary, _/binary>> = Rest,
+decode(Bin) ->
 	decode(Bin, []).
 	
 decode(<<>>, Acc) ->
 	lists:reverse(Acc);
 	
-decode(<<Type:8/little-signed, Tail1/binary>>, Acc) ->
+decode(<<Size:32/little-signed, Rest/binary>>, Acc) ->
+	Size1 = Size-5,
+	<<Bin:Size1/binary, 0:8, Tail/binary>> = Rest,
+	decode(Tail, [decode_document(Bin, [])|Acc]).
+	
+decode_document(<<>>, Acc) ->
+	lists:reverse(Acc);
+	
+decode_document(<<Type:8/little-signed, Tail1/binary>>, Acc) ->
 	{Key, Tail2} = decode_key(Tail1, <<>>),
 	{Val, Tail3} = decode_value(Type, Tail2),
-	decode(Tail3, [{Key, Val}|Acc]).
+	decode_document(Tail3, [{Key, Val}|Acc]).
 
 decode_key(<<0, Tail/binary>>, Acc) ->
 	{Acc, Tail};

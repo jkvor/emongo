@@ -22,20 +22,20 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_conn).
 
--export([start_link/2, init/3, send/3, send_recv/4]).
+-export([start_link/3, init/4, send/3, send_recv/4]).
 
 -record(request, {req_id, requestor}).
--record(state, {socket, requests}).
+-record(state, {pool_id, socket, requests}).
 
 -include("emongo.hrl").
 
-start_link(Host, Port) ->
-	proc_lib:start_link(?MODULE, init, [Host, Port, self()]).
+start_link(PoolId, Host, Port) ->
+	proc_lib:start_link(?MODULE, init, [PoolId, Host, Port, self()]).
 	
-init(Host, Port, Parent) ->
+init(PoolId, Host, Port, Parent) ->
 	Socket = open_socket(Host, Port),
 	proc_lib:init_ack(Parent, self()),
-	loop(#state{socket=Socket, requests=[]}).
+	loop(#state{pool_id=PoolId, socket=Socket, requests=[]}).
 	
 send(Pid, ReqID, Packet) ->
 	case gen:call(Pid, '$emongo_conn_send', {ReqID, Packet}) of
@@ -61,15 +61,20 @@ loop(State) ->
 			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
 			loop(State1);
 		{tcp, _Sock, Data} ->
+			io:format("recv'd ~p~n", [Data]),
 			Resp = emongo_packet:decode_response(Data),
 			ResponseTo = (Resp#response.header)#header.response_to,
-			case proplists:get_value(ResponseTo, State#state.requests) of
-				undefined ->
-					ok;
-				Request ->
-					gen:reply(Request#request.requestor, Resp)
-			end,
-			loop(State)
+			case find_request(ResponseTo, State#state.requests, []) of
+				{undefined, _} ->
+					exit({unexpected_response, Resp});
+				{Request, Others} ->
+					gen:reply(Request#request.requestor, Resp),
+					loop(State#state{requests=Others})
+			end;
+		{tcp_closed, _Sock} ->
+			exit({State#state.pool_id, tcp_closed});
+		{tcp_error, _Sock, Reason} ->
+			exit({State#state.pool_id, Reason})
 	end.
 	
 open_socket(Host, Port) ->
@@ -79,3 +84,12 @@ open_socket(Host, Port) ->
 		{error, Reason} ->
 			exit({failed_to_open_socket, Reason})
 	end.
+	
+find_request(RequestID, [{RequestID, Request}|Tail], OtherReqs) ->
+	{Request, lists:append(OtherReqs, Tail)};
+
+find_request(RequestID, [Request|Tail], OtherReqs) ->
+	find_request(RequestID, Tail, [Request|OtherReqs]);
+	
+find_request(_RequestID, [], OtherReqs) ->
+	{undefined, OtherReqs}.

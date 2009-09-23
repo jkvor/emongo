@@ -26,8 +26,8 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, add_pool/5, find/3, find/4, find_one/3, find_one/4, 
-		 insert/3]).
+-export([pools/0, add_pool/5, find/2, find/3, find/4, 
+		 find_one/3, find_one/4, insert/3]).
 
 -include("emongo.hrl").
 
@@ -59,6 +59,9 @@ add_pool(PoolId, Host, Port, Database, Size) ->
 
 %%use_db(PoolId) -> ok.
 
+find(PoolId, Collection) ->
+	find(PoolId, Collection, [], ?TIMEOUT).
+
 find(PoolId, Collection, Document) ->
 	find(PoolId, Collection, Document, ?TIMEOUT).
 	
@@ -66,7 +69,7 @@ find(PoolId, Collection, Document, Timeout) when is_list(Document) ->
 	find(PoolId, Collection, #emo_query{q=Document}, Timeout);
 	
 find(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
-	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], num_to_return=1}, Timeout);
+	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], limit=1}, Timeout);
 	
 find(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
@@ -78,10 +81,10 @@ find_one(PoolId, Collection, Document) ->
 	find_one(PoolId, Collection, Document, ?TIMEOUT).
 
 find_one(PoolId, Collection, Document, Timeout) when is_list(Document) ->
-	find(PoolId, Collection, #emo_query{q=Document, num_to_return=1}, Timeout);
+	find(PoolId, Collection, #emo_query{q=Document, limit=1}, Timeout);
 
 find_one(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
-	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], num_to_return=1}, Timeout).
+	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], limit=1}, Timeout).
 
 insert(PoolId, Collection, Document) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
@@ -112,6 +115,7 @@ insert(PoolId, Collection, Document) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init(_) ->
+	process_flag(trap_exit, true),
 	Pools = initialize_pools(),
 	{ok, #state{pools=Pools}}.
 
@@ -140,7 +144,7 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 					database=Database,
 					size=Size
 				},
-				Pool1 = open_connections(Pool),
+				Pool1 = do_open_connections(Pool),
 				{ok, [{PoolId, Pool1}|Pools]}
 		end,
 	{reply, Result, State#state{pools=Pools1}};
@@ -173,6 +177,20 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
+	State1 =
+		case get_pool(PoolId, Pools) of
+			undefined ->
+				State;
+			{Pool, Others} ->
+				Pids1 = lists:delete(Pid, Pool#pool.conn_pids),
+				Pool1 = Pool#pool{conn_pids = Pids1},
+				Pool2 = do_open_connections(Pool1),
+				Pools1 = [{PoolId, Pool2}|Others],
+				State#state{pools=Pools1}
+		end,
+	{noreply, State1};
+	
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -209,15 +227,16 @@ initialize_pools() ->
 					port = proplists:get_value(port, Props, 27017), 
 					database = proplists:get_value(database, Props, "test")
 				},
-				{PoolId, open_connections(Pool)}
+				{PoolId, do_open_connections(Pool)}
 			 end || {PoolId, Props} <- Pools]
 	end.
+		
+do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) when length(Pids) < Size -> 
+	Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
+	do_open_connections(Pool#pool{conn_pids = [Pid|Pids]});
 	
-open_connections(Pool) ->
-	ConnPids = [begin
-		emongo_conn:start_link(Pool#pool.host, Pool#pool.port)
-	 end || _ <- lists:seq(1, Pool#pool.size)],
-	Pool#pool{conn_pids=ConnPids}.
+do_open_connections(Pool) -> 
+	Pool.
 
 get_conn_pid(#pool{conn_pids=[Pid|_]}) -> Pid.
 

@@ -55,8 +55,8 @@ do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
 		true -> emongo_bson:encode(Query#emo_query.field_selector) 
 	end,
 	Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
-				(Query#emo_query.num_to_skip):32/little-signed, 
-				(Query#emo_query.num_to_return):32/little-signed, 
+				(Query#emo_query.offset):32/little-signed, 
+				(Query#emo_query.limit):32/little-signed, 
 				EncodedDocument/binary, EncodedFieldSelector/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
@@ -94,7 +94,7 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 		header = {header, Length, ReqID, RespTo, Op}, 
 		response_flag = RespFlag, 
 		cursor_id = CursorID, 
-		starting_from = StartingFrom, 
-		number_returned = NumRet, 
+		offset = StartingFrom, 
+		limit = NumRet, 
 		documents = if Documents == <<>> -> []; true -> emongo_bson:decode(Documents) end
 	}.
