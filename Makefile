@@ -28,7 +28,7 @@ package: clean
 	@rm -rf $(PKGNAME)-$(VERSION)/
 	
 install:
-	@mkdir -p $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/{ebin,include,priv}
+	@mkdir -p $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/{ebin,include}
 	@mkdir -p $(prefix)/$(ROOTDIR)/bin
 	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
 	cp *.boot $(prefix)/$(ROOTDIR)/bin/
