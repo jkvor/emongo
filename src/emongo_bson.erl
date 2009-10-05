@@ -39,8 +39,14 @@ encode_key_value(Key, Val) when is_float(Val) ->
 %% STRING
 encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
 	Key1 = encode_key(Key),
-	Val1 = unicode:characters_to_binary(Val),
-	<<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>;
+	case unicode:characters_to_binary(Val) of
+		{error, Bin, RestData} ->
+			exit({cannot_convert_chars_to_binary, Val, Bin, RestData});
+		{incomplete, Bin1, Bin2} ->
+			exit({cannot_convert_chars_to_binary, Val, Bin1, Bin2});
+		Val1 ->
+			<<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>
+	end;
 	
 %% NESTED OBJECT
 encode_key_value(Key, [{_,_}|_]=Val) ->
@@ -94,7 +100,7 @@ encode_key_value(Key, {datetime, Val}) ->
 	Key1 = encode_key(Key),
 	Date1 = calendar:datetime_to_gregorian_seconds(Val),
 	Date2 = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
-	Epoch = Date1 - Date2,
+	Epoch = (Date1 - Date2) * 1000,
 	<<9, Key1/binary, 0, Epoch:64/little-signed>>;
 	
 encode_key_value(Key, {{Year, Month, Day}, {Hour, Min, Secs}}) when is_integer(Year), is_integer(Month), is_integer(Day), is_integer(Hour), is_integer(Min), is_integer(Secs) ->

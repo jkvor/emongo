@@ -66,7 +66,6 @@ loop(State, Leftover) ->
 			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
 			loop(State1, Leftover);
 		{tcp, _Sock, Data} ->
-			io:format("recv'd ~p~n", [Data]),
 			case emongo_packet:decode_response(<<Leftover/binary, Data/binary>>) of
 				undefined ->
 					loop(State, <<Leftover/binary, Data/binary>>);
