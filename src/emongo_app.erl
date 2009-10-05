@@ -36,13 +36,12 @@ init(_) ->
    ]}}.
 
 build_rel() ->
+	Apps = [kernel,stdlib,sasl],
     {ok, FD} = file:open("emongo.rel", [write]),
     RelInfo = {release,
         {"emongo", "0.3"},
-        {erts, "5.7.2"}, [
-            {kernel, "2.13.2"},
-            {stdlib, "1.16.2"},
-            {sasl, "2.1.6"},
+        get_app_version(erts), 
+            [get_app_version(AppName) || AppName <- Apps] ++ [
             {emongo, "0.0.1"}
         ]
     },
@@ -50,3 +49,15 @@ build_rel() ->
     file:close(FD),
     systools:make_script("emongo", [local]),
     ok.
+
+get_app_version(AppName) ->
+	case code:lib_dir(AppName) of
+		{error, bad_name} ->
+			exit({bad_name, AppName});
+		Dir ->
+			case lists:reverse(string:tokens(Dir, "-")) of
+				[Vsn|_] -> {AppName, Vsn};
+				_ ->
+					exit({failed_to_tokenize, Dir})
+			end
+	end.
