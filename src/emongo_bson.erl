@@ -175,12 +175,13 @@ decode_value(2, <<Size:32/little-signed, Tail1/binary>>) ->
 	
 %% OBJECT
 decode_value(3, Bin) ->
-	decode(Bin);
+	[Val] = decode(Bin),
+	{Val, <<>>};
 
 %% DATA ARRAY
 decode_value(4, Bin) ->
-	{Val, Tail} = decode(Bin),
-	{{array, [V || {_, V} <- Val]}, Tail};
+	[Val] = decode(Bin),
+	{{array, [V || {_, V} <- Val]}, <<>>};
 
 %% BINARY
 decode_value(5, <<_Size:32/little-signed, 2:8/little, BinSize:32/little-signed, BinData:BinSize/binary-little-unit:8, Tail/binary>>) ->
