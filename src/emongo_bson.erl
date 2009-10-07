@@ -57,7 +57,7 @@ encode_key_value(Key, [{_,_}|_]=Val) ->
 %% DATA ARRAY
 encode_key_value(Key, {array, Val}) when is_list(Val) ->
 	Key1 = encode_key(Key),
-	Val1 = encode(lists:zip(lists:seq(1, length(Val)), Val)),
+	Val1 = encode(lists:zip(lists:seq(0, length(Val)-1), Val)),
 	<<4, Key1/binary, 0, Val1/binary>>;
 	
 encode_key_value(Key, Val) when is_list(Val) ->
