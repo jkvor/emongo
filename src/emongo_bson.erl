@@ -123,8 +123,8 @@ encode_key_value(Key, Val) when is_integer(Val) ->
 	Key1 = encode_key(Key),
 	<<16, Key1/binary, 0, Val:32/little-signed>>;
 
-encode_key_value(_, _) ->
-	exit(oh_balls).
+encode_key_value(Key, Val) ->
+	exit({oh_balls, Key, Val}).
 	
 encode_key(Key) when is_binary(Key) ->
 	Key;
@@ -145,10 +145,10 @@ decode(<<>>, Acc) ->
 	lists:reverse(Acc);
 	
 decode(Bin, Acc) ->
-	{Doc, Rest} = decode_internal(Bin),
+	{Doc, Rest} = decode_next(Bin),
 	decode(Rest, [Doc|Acc]).
 	
-decode_internal(<<Size:32/little-signed, Rest/binary>>) ->
+decode_next(<<Size:32/little-signed, Rest/binary>>) ->
 	Size1 = Size-5,
 	<<Bin:Size1/binary, 0:8, Tail/binary>> = Rest,
 	{decode_document(Bin, []), Tail}.
@@ -179,11 +179,11 @@ decode_value(2, <<Size:32/little-signed, Tail1/binary>>) ->
 	
 %% OBJECT
 decode_value(3, Bin) ->
-	decode_internal(Bin);
+	decode_next(Bin);
 
 %% DATA ARRAY
 decode_value(4, Bin) ->
-	{Val, Rest} = decode_internal(Bin),
+	{Val, Rest} = decode_next(Bin),
 	{{array, [V || {_, V} <- Val]}, Rest};
 
 %% BINARY
