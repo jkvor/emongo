@@ -73,11 +73,11 @@ encode_key_value(Key, {binary, SubType, Val}) when is_integer(SubType), is_binar
 	<<5, Key1/binary, 0, (byte_size(Val)):32/little-signed, SubType:8, Val/binary>>;
 		
 %% OID
-encode_key_value(Key, {oid, <<First:8/little-binary-unit:8, Second:4/little-binary-unit:8>>}) ->
+encode_key_value(Key, {oid, HexString}) when is_list(HexString) ->
+	encode_key_value(Key, {oid, emongo:hex2dec(HexString)});
+	
+encode_key_value(Key, {oid, OID}) when is_binary(OID) ->
 	Key1 = encode_key(Key),
-	FirstReversed = lists:reverse(binary_to_list(First)),
-	SecondReversed = lists:reverse(binary_to_list(Second)),
-	OID = list_to_binary(lists:append(FirstReversed, SecondReversed)),
 	<<7, Key1/binary, 0, OID/binary>>;
 	
 %% BOOL
@@ -194,10 +194,7 @@ decode_value(5, <<Size:32/little-signed, SubType:8/little, BinData:Size/binary-l
   	{{binary, SubType, BinData}, Tail};
 
 %% OID
-decode_value(7, <<First:8/little-binary-unit:8, Second:4/little-binary-unit:8, Tail/binary>>) ->
-	FirstReversed = lists:reverse(binary_to_list(First)),
-	SecondReversed = lists:reverse(binary_to_list(Second)),
-	OID = list_to_binary(lists:append(FirstReversed, SecondReversed)),
+decode_value(7, <<OID:12/binary, Tail/binary>>) ->
 	{{oid, OID}, Tail};
 	
 %% BOOL	

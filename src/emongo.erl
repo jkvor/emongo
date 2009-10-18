@@ -30,7 +30,7 @@
 		 find_all/2, find_all/3, find_all/4, get_more/4,
 		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
-		 count/2]).
+		 count/2, dec2hex/1, hex2dec/1]).
 
 -include("emongo.hrl").
 
@@ -349,7 +349,41 @@ get_pool(PoolId, [{PoolId, Pool}|Tail], Others) ->
 	
 get_pool(PoolId, [Pool|Tail], Others) ->
 	get_pool(PoolId, Tail, [Pool|Others]).
+
+dec2hex(Dec) ->
+	dec2hex(<<>>, Dec).
 	
+dec2hex(N, <<I:8,Rem/binary>>) ->
+	dec2hex(<<N/binary, (hex0((I band 16#f0) bsr 4)):8, (hex0((I band 16#0f))):8>>, Rem);
+dec2hex(N,<<>>) ->
+	N.
+
+hex2dec(Hex) when is_list(Hex) ->
+	hex2dec(list_to_binary(Hex));
+	
+hex2dec(Hex) ->
+	hex2dec(<<>>, Hex).
+	
+hex2dec(N,<<A:8,B:8,Rem/binary>>) ->
+	hex2dec(<<N/binary, ((dec0(A) bsl 4) + dec0(B)):8>>, Rem);
+hex2dec(N,<<>>) ->
+	N.
+
+dec0($a) ->	10;
+dec0($b) ->	11;
+dec0($c) ->	12;
+dec0($d) ->	13;
+dec0($e) ->	14;
+dec0($f) ->	15;
+dec0(X) ->	X - $0.
+
+hex0(10) -> $a;
+hex0(11) -> $b;
+hex0(12) -> $c;
+hex0(13) -> $d;
+hex0(14) -> $e;
+hex0(15) -> $f;
+hex0(I) ->  $0 + I.
 	
 	
 	
