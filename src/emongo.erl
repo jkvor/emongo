@@ -37,6 +37,15 @@
 -record(state, {pools, oid_index, hashed_hostn}).
 
 %%====================================================================
+%% Types
+%%====================================================================
+%% pool_id() = atom()
+%% collection() = string()
+%% response() = {response, header, response_flag, cursor_id, offset, limit, documents}
+%% documents() = [document()]
+%% document() = [{term(), term()}]
+
+%%====================================================================
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
@@ -54,36 +63,30 @@ oid() ->
 	
 add_pool(PoolId, Host, Port, Database, Size) ->
 	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
-	
-%%show_dbs() -> ok.
-
-%%show_collections(Database) -> ok.
-
-%%show_users(Database) -> ok.
-
-%%show_profile(Database) -> ok.
-
-%%use_db(PoolId) -> ok.
 
 %%------------------------------------------------------------------------------
 %% find
 %%------------------------------------------------------------------------------
 find(PoolId, Collection) ->
-	find(PoolId, Collection, [], ?TIMEOUT).
+	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
-find(PoolId, Collection, Document) ->
-	find(PoolId, Collection, Document, ?TIMEOUT).
+find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
+	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
 	
-find(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
-	find(PoolId, Collection, #emo_query{q=Document}, Timeout);
-	
-find(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
-	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], limit=1}, Timeout);
-	
-find(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
+%% @spec find(PoolId, Collection, Selector, Options) -> Result
+%%		 PoolId = atom()
+%%		 Collection = string()
+%%		 Selector = document()
+%%		 Options = [Option]
+%%		 Option = {timeout, Timeout} | response_options
+%%		 Timeout = integer (timeout in milliseconds)
+%%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
+%%		 Result = documents() | response()
+find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Query = create_query(Selector, Options),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
+	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)).
 
 %%------------------------------------------------------------------------------
 %% find_all
@@ -247,11 +250,15 @@ handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
 	case get_pool(PoolId, Pools) of
 		undefined ->
 			{reply, {undefined, undefined}, State};
-		{Pool, Others} ->
-			Pid = get_conn_pid(Pool),
-			Pool1 = Pool#pool{req_id = ((Pool#pool.req_id)+1)},
-			Pools1 = [{PoolId, Pool1}|Others],
-			{reply, {Pid, Pool}, State#state{pools=Pools1}}
+		{Pool, Others} ->			
+			case queue:out(Pool#pool.conn_pids) of
+				{{value, Pid}, Q2} ->
+					Pool1 = Pool#pool{conn_pids = queue:in(Pid, Q2), req_id = ((Pool#pool.req_id)+1)},
+					Pools1 = [{PoolId, Pool1}|Others],
+					{reply, {Pid, Pool}, State#state{pools=Pools1}};
+				{empty, _} ->
+					{reply, {undefined, Pool}, State}
+			end
 	end;
 	
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
@@ -336,8 +343,6 @@ do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) when length(Pids) < S
 do_open_connections(Pool) -> 
 	Pool.
 
-get_conn_pid(#pool{conn_pids=[Pid|_]}) -> Pid.
-
 get_pool(PoolId, Pools) ->
 	get_pool(PoolId, Pools, []).
 	
@@ -349,6 +354,9 @@ get_pool(PoolId, [{PoolId, Pool}|Tail], Others) ->
 	
 get_pool(PoolId, [Pool|Tail], Others) ->
 	get_pool(PoolId, Tail, [Pool|Others]).
+	
+create_query(Selector, _Options) ->
+	#emo_query{q=Selector}.
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).
