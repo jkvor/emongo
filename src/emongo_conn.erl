@@ -46,12 +46,10 @@ send(Pid, ReqID, Packet) ->
 send_recv(Pid, ReqID, Packet, Timeout) ->
 	case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
 		{ok, Resp} ->
-			Documents = if 
-				Resp#response.documents == <<>> -> []; 
-				true -> emongo_bson:decode(Resp#response.documents) 
-			end,
+			Documents = emongo_bson:decode(Resp#response.documents),
 			Resp#response{documents=Documents};
-		{error, Reason} -> exit(Reason)
+		{error, Reason} -> 
+			exit(Reason)
 	end.
 	
 loop(State, Leftover) ->
