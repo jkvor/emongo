@@ -285,13 +285,10 @@ handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
 			undefined ->
 				State;
 			{Pool, Others} ->
-				io:format("delete ~p from ~p~n", [Pid, Pool#pool.conn_pids]),
-				Pids1 = lists:delete(Pid, Pool#pool.conn_pids),
-				io:format("new pids ~p~n", [Pids1]),
+				Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
 				Pool1 = Pool#pool{conn_pids = Pids1},
 				Pool2 = do_open_connections(Pool1),
 				Pools1 = [{PoolId, Pool2}|Others],
-				io:format("new pool ~p~n", [Pools1]),
 				State#state{pools=Pools1}
 		end,
 	{noreply, State1};
@@ -336,12 +333,14 @@ initialize_pools() ->
 			 end || {PoolId, Props} <- Pools]
 	end.
 		
-do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) when length(Pids) < Size -> 
-	Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
-	do_open_connections(Pool#pool{conn_pids = [Pid|Pids]});
-	
-do_open_connections(Pool) -> 
-	Pool.
+do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 
+	case queue:len(Pids) < Size of
+		true ->
+			Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
+			do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)});
+		false ->
+			Pool
+	end.
 
 get_pool(PoolId, Pools) ->
 	get_pool(PoolId, Pools, []).
