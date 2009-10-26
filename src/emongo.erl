@@ -71,7 +71,12 @@ find(PoolId, Collection) ->
 	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
 find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
+	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]);
+	
+find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
+	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
 	
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
