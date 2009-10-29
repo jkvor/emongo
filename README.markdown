@@ -1,0 +1,1 @@
+Emongo is still under development and lacking in functionality.  The goal of emongo, however, is to be stable, fast and easy to use.
