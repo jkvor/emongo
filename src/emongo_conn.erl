@@ -53,17 +53,18 @@ send_recv(Pid, ReqID, Packet, Timeout) ->
 	end.
 	
 loop(State, Leftover) ->
+	Socket = State#state.socket,
 	receive
 		{'$emongo_conn_send', {From, Mref}, {_ReqID, Packet}} ->
-			gen_tcp:send(State#state.socket, Packet),
+			gen_tcp:send(Socket, Packet),
 			gen:reply({From, Mref}, ok),
 			loop(State, Leftover);
 		{'$emongo_conn_send_recv', {From, Mref}, {ReqID, Packet}} -> 
-			gen_tcp:send(State#state.socket, Packet),
+			gen_tcp:send(Socket, Packet),
 			Request = #request{req_id=ReqID, requestor={From, Mref}},
 			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
 			loop(State1, Leftover);
-		{tcp, _Sock, Data} ->
+		{tcp, Socket, Data} ->
 			case emongo_packet:decode_response(<<Leftover/binary, Data/binary>>) of
 				undefined ->
 					loop(State, <<Leftover/binary, Data/binary>>);
@@ -77,9 +78,9 @@ loop(State, Leftover) ->
 							loop(State#state{requests=Others}, Tail)
 					end
 			end;
-		{tcp_closed, _Sock} ->
+		{tcp_closed, Socket} ->
 			exit({State#state.pool_id, tcp_closed});
-		{tcp_error, _Sock, Reason} ->
+		{tcp_error, Socket, Reason} ->
 			exit({State#state.pool_id, Reason})
 	end.
 	
