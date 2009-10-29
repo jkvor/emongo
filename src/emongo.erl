@@ -71,7 +71,12 @@ find(PoolId, Collection) ->
 	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
 find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
+	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]);
+	
+find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
+	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
 	
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
@@ -285,13 +290,10 @@ handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
 			undefined ->
 				State;
 			{Pool, Others} ->
-				io:format("delete ~p from ~p~n", [Pid, Pool#pool.conn_pids]),
-				Pids1 = lists:delete(Pid, Pool#pool.conn_pids),
-				io:format("new pids ~p~n", [Pids1]),
+				Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
 				Pool1 = Pool#pool{conn_pids = Pids1},
 				Pool2 = do_open_connections(Pool1),
 				Pools1 = [{PoolId, Pool2}|Others],
-				io:format("new pool ~p~n", [Pools1]),
 				State#state{pools=Pools1}
 		end,
 	{noreply, State1};
@@ -336,12 +338,14 @@ initialize_pools() ->
 			 end || {PoolId, Props} <- Pools]
 	end.
 		
-do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) when length(Pids) < Size -> 
-	Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
-	do_open_connections(Pool#pool{conn_pids = [Pid|Pids]});
-	
-do_open_connections(Pool) -> 
-	Pool.
+do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 
+	case queue:len(Pids) < Size of
+		true ->
+			Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
+			do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)});
+		false ->
+			Pool
+	end.
 
 get_pool(PoolId, Pools) ->
 	get_pool(PoolId, Pools, []).
