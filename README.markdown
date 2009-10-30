@@ -46,17 +46,25 @@ start the app and then add as many pools as you like
 #### Types
 
 PoolName = atom()
+
 Host = string()
+
 Port = integer()
+
 Database = string()
+
 PoolSize = integer()
+
 CollectionName = string()
+
 Selector = Document
+
 Document = [{Key, Val}]
+
 Key = string() | atom() | binary() | integer()
-Val = float() | string() | binary() | Document | {array, [term()]} | 
-	  {binary, BinSubType, binary()} | {oid, binary()} | {oid, string()} | 
-	  bool() | now() | datetime() | undefined | {regexp, string(), string()} | integer()
+
+Val = float() | string() | binary() | Document | {array, [term()]} | {binary, BinSubType, binary()} | {oid, binary()} | {oid, string()} | bool() | now() | datetime() | undefined | {regexp, string(), string()} | integer()
+
 BinSubType = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteondatabinary>
 
 #### Add Pool
