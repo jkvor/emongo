@@ -83,16 +83,50 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Collection = string()
 %%		 Selector = document()
 %%		 Options = [Option]
-%%		 Option = {timeout, Timeout} | response_options
+%%		 Option = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | response_options
 %%		 Timeout = integer (timeout in milliseconds)
+%%		 Limit = integer
+%%		 Offset = integer
+%%		 Orderby = [{Key, Direction}]
+%%		 Key = string() | binary() | atom() | integer()
+%%		 Direction = 1 (Asc) | -1 (Desc)
+%%		 Fields = [Field]
+%%		 Field = string() | binary() | atom() | integer() = specifies a field to return in the result set
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
 find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = create_query(Selector, Options),
+	Query = create_query(Options, #emo_query{q=Selector}),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)).
+	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
+	case lists:member(response_options, Options) of
+		true -> Resp;
+		false -> Resp#response.documents
+	end.
 
+create_query([], Query) ->
+	Query;
+	
+create_query([{limit, Limit}|Options], Query) ->
+	Query1 = Query#emo_query{limit=Limit},
+	create_query(Options, Query1);
+	
+create_query([{offset, Offset}|Options], Query) ->
+	Query1 = Query#emo_query{offset=Offset},
+	create_query(Options, Query1);
+
+create_query([{orderby, Orderby}|Options], Query) ->
+	Selector = Query#emo_query.q,
+	Query1 = Query#emo_query{q=[{<<"orderby">>, Orderby}|Selector]},
+	create_query(Options, Query1);
+	
+create_query([{fields, Fields}|Options], Query) ->
+	Query1 = Query#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
+	create_query(Options, Query1);
+	
+create_query([_|Options], Query) ->
+	create_query(Options, Query).
+	
 %%------------------------------------------------------------------------------
 %% find_all
 %%------------------------------------------------------------------------------
@@ -359,9 +393,6 @@ get_pool(PoolId, [{PoolId, Pool}|Tail], Others) ->
 get_pool(PoolId, [Pool|Tail], Others) ->
 	get_pool(PoolId, Tail, [Pool|Others]).
 	
-create_query(Selector, _Options) ->
-	#emo_query{q=Selector}.
-
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).
 	
