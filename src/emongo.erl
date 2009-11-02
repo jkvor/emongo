@@ -30,7 +30,7 @@
 		 find_all/2, find_all/3, find_all/4, get_more/4,
 		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
-		 count/2, dec2hex/1, hex2dec/1]).
+		 ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
 
 -include("emongo.hrl").
 
@@ -73,6 +73,7 @@ find(PoolId, Collection) ->
 find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]);
 	
+%% this function has been deprecated
 find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
@@ -215,7 +216,13 @@ delete(PoolId, Collection, Selector) ->
 	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, Selector),
 	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
-%%ensure_index
+%%------------------------------------------------------------------------------
+%% ensure index
+%%------------------------------------------------------------------------------
+ensure_index(PoolId, Collection, Keys) when ?IS_DOCUMENT(Keys)->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet = emongo_packet:ensure_index(Pool#pool.database, Collection, Pool#pool.req_id, Keys),
+	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
 count(PoolId, Collection) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),

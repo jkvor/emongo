@@ -23,7 +23,8 @@
 -module(emongo_packet).
 
 -export([update/6, insert/4, do_query/4, get_more/5, 
-		 delete/4, kill_cursors/2, msg/2, decode_response/1]).
+		 delete/4, kill_cursors/2, msg/2, decode_response/1,
+		 ensure_index/4]).
 
 -include("emongo.hrl").
 	
@@ -74,6 +75,18 @@ delete(Database, Collection, ReqID, Selector) ->
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_DELETE:32/little-signed, Message/binary>>.
 
+ensure_index(Database, Collection, ReqID, Keys) ->
+	FullName = unicode:characters_to_binary([Database, ".system.indexes"]),
+	Selector = [
+		{<<"name">>, index_name(Keys, <<>>)},
+		{<<"ns">>, unicode:characters_to_binary([Database, ".", Collection])},
+		{<<"key">>, Keys}],
+	EncodedDocument = emongo_bson:encode(Selector),
+	io:format("index doc ~p~n", [EncodedDocument]),
+	Message = <<0:32, FullName/binary, 0, 0:32, EncodedDocument/binary>>,
+	Length = byte_size(Message),
+    <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
+
 kill_cursors(ReqID, CursorIDs) ->
 	CursorIDsBin = lists:foldl(fun(ID, Bin) -> <<Bin/binary, ID:64/little-signed>> end, <<>>, CursorIDs),
 	Message = <<0:32, (length(CursorIDs)):32/little-signed, CursorIDsBin/binary>>,
@@ -107,3 +120,12 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 			},
 			{Resp, Tail}
 	end.
+
+index_name([], Bin) -> Bin;
+index_name([{Key, Val}|Tail], Bin) ->
+	KeyBin = unicode:characters_to_binary(Key),
+	ValBin = if
+		is_integer(Val) -> list_to_binary(integer_to_list(Val));
+		true -> <<>>
+	end,
+	index_name(Tail, <<Bin/binary, KeyBin/binary, "_", ValBin/binary>>).
