@@ -82,8 +82,7 @@ ensure_index(Database, Collection, ReqID, Keys) ->
 		{<<"ns">>, unicode:characters_to_binary([Database, ".", Collection])},
 		{<<"key">>, Keys}],
 	EncodedDocument = emongo_bson:encode(Selector),
-	io:format("index doc ~p~n", [EncodedDocument]),
-	Message = <<0:32, FullName/binary, 0, 0:32, EncodedDocument/binary>>,
+	Message = <<0:32, FullName/binary, 0, EncodedDocument/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_INSERT:32/little-signed, Message/binary>>.
 
