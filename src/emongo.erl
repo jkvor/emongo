@@ -90,14 +90,14 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Offset = integer
 %%		 Orderby = [{Key, Direction}]
 %%		 Key = string() | binary() | atom() | integer()
-%%		 Direction = 1 (Asc) | -1 (Desc)
+%%		 Direction = asc | desc
 %%		 Fields = [Field]
 %%		 Field = string() | binary() | atom() | integer() = specifies a field to return in the result set
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
 find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = create_query(Options, #emo_query{}, Selector, []),
+	Query = create_query(Options, Selector),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	case lists:member(response_options, Options) of
@@ -394,6 +394,10 @@ hex2dec(N,<<A:8,B:8,Rem/binary>>) ->
 hex2dec(N,<<>>) ->
 	N.
 
+create_query(Options, Selector) ->
+	Selector1 = transform_selector(Selector),
+	create_query(Options, #emo_query{}, Selector1, []).
+	
 create_query([], QueryRec, QueryDoc, []) ->
 	QueryRec#emo_query{q=QueryDoc};
 
@@ -412,7 +416,8 @@ create_query([{offset, Offset}|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec1, QueryDoc, OptDoc);
 
 create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
-	OptDoc1 = [{<<"orderby">>, Orderby}|OptDoc],
+	Orderby1 = [{Key, case Dir of desc -> -1; _ -> 1 end}|| {Key, Dir} <- Orderby],
+	OptDoc1 = [{<<"orderby">>, Orderby1}|OptDoc],
 	create_query(Options, QueryRec, QueryDoc, OptDoc1);
 	
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
@@ -421,6 +426,48 @@ create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
 	
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc).
+	
+transform_selector(Selector) ->
+	transform_selector(Selector, []).
+	
+transform_selector([], Acc) -> 
+	lists:reverse(Acc);
+	
+transform_selector([{where, Val}|Tail], Acc) when is_list(Val) ->
+	transform_selector(Tail, [{<<"$where">>, Val}|Acc]);
+	
+transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
+	Vals1 =
+		[case Operator of
+			O when O == '>'; O == gt -> 
+				{<<"$gt">>, Val};
+			O when O == '<'; O == lt ->
+				{<<"$lt">>, Val};
+			O when O == '>='; O == gte ->
+				{<<"$gte">>, Val};
+			O when O == '=<'; O == lte ->
+				{<<"$lte">>, Val};
+			O when O == '=/='; O == '/='; O == ne ->
+				{<<"$ne">>, Val};
+			in when is_list(Val) -> 
+				{<<"$in">>, {array, Val}};
+			nin when is_list(Val) -> 
+				{<<"$nin">>, {array, Val}};
+			mod when is_list(Val), length(Val) == 2 -> 
+				{<<"$mod">>, {array, Val}};
+			all when is_list(Val) ->
+				{<<"$all">>, {array, Val}};
+			size when is_integer(Val) ->
+				{<<"$size">>, Val};
+			exists when is_boolean(Val) ->
+				{<<"$exists">>, Val};
+			_ -> 
+				{Operator, Val}
+		 end || {Operator, Val} <- Vals],
+	transform_selector(Tail, [{Key, Vals1}|Acc]);
+	
+transform_selector([Other|Tail], Acc) ->
+	transform_selector(Tail, [Other|Acc]).
 	
 dec0($a) ->	10;
 dec0($b) ->	11;
