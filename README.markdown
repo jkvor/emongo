@@ -103,6 +103,12 @@ __not equal__
 
 	%% find documents where field1 is not equal to 5 or 10
 	emongo:find(test, "collection", [{"field1", [{ne, 5}, {ne, 10}]}]).
+	  
+	%% find documents where field1 is not equal to 5
+	emongo:find(test, "collection", [{"field1", [{'=/=', 5}]}]).
+	  
+	%% find documents where field1 is not equal to 5
+	emongo:find(test, "collection", [{"field1", [{'/=', 5}]}]).
 	
 __in__
 
