@@ -43,17 +43,17 @@ start the app and then add as many pools as you like
 	
 ## API Type Reference
 
-PoolName = atom()  
-Host = string()  
-Port = integer()  
-Database = string()  
-PoolSize = integer()  
-CollectionName = string()  
-Selector = Document  
-Document = [{Key, Val}]  
-Key = string() | atom() | binary() | integer()  
-Val = float() | string() | binary() | Document | {array, [term()]} | {binary, BinSubType, binary()} | {oid, binary()} | {oid, string()} | bool() | now() | datetime() | undefined | {regexp, string(), string()} | integer()  
-BinSubType = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteondatabinary>  
+__PoolName__ = atom()  
+__Host__ = string()  
+__Port__ = integer()  
+__Database__ = string()  
+__PoolSize__ = integer()  
+__CollectionName__ = string()  
+__Selector__ = Document  
+__Document__ = [{Key, Val}]  
+__Key__ = string() | atom() | binary() | integer()  
+__Val__ = float() | string() | binary() | Document | {array, [term()]} | {binary, BinSubType, binary()} | {oid, binary()} | {oid, string()} | bool() | now() | datetime() | undefined | {regexp, string(), string()} | integer()  
+__BinSubType__ = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteondatabinary>  
 
 ## Add Pool
 
@@ -61,23 +61,23 @@ BinSubType = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteondata
 
 ## Find
 	
-Options = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | response_options  
-Timeout = integer (timeout in milliseconds)  
-Limit = integer  
-Offset = integer  
-Orderby = [{Key, Direction}]  
-Direction = 1 (Asc) | -1 (Desc)  
-Fields = [Key] = specifies a list of fields to return in the result set  
-response_options = return #response{header, response_flag, cursor_id, offset, limit, documents}  
-Result = [Document] | response()  
+__Options__ = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | response_options  
+__Timeout__ = integer (timeout in milliseconds)  
+__Limit__ = integer  
+__Offset__ = integer  
+__Orderby__ = [{Key, Direction}]  
+__Direction__ = 1 (Asc) | -1 (Desc)  
+__Fields__ = [Key] = specifies a list of fields to return in the result set  
+__response_options__ = return #response{header, response_flag, cursor_id, offset, limit, documents}  
+__Result__ = [Document] | response()  
 	
 	emongo:find(PoolName, CollectionName) -> Result
 	emongo:find(PoolName, CollectionName, Selector) -> Result
 	emongo:find(PoolName, CollectionName, Selector, Options) -> Result
 	
-#### Examples
+### Examples
 
-limit, offset, timeout, orderby, fields
+__limit, offset, timeout, orderby, fields__
 
 	%% find documents from 'collection' where field1 equals 1 and abort the query if it takes more than 5 seconds
 	%% limit the number of results to 100 and offset the first document 10 documents from the beginning
@@ -85,7 +85,7 @@ limit, offset, timeout, orderby, fields
 	%% limit the fields in the return documents to field1 (the _id field is always included in the results)
 	emongo:find(test, "collection", [{"field1", 1}], [{limit, 100}, {offset, 10}, {timeout, 5000}, {orderby, [{"field1", asc}]}, {fields, ["field1"]}]).
 	
-great than, less than, great than or equal, less than or equal
+__great than, less than, great than or equal, less than or equal__
 
 	%% find documents where field1 is greater than 5 and less than 10
 	emongo:find(test, "collection", [{"field1", [{gt, 5}, {lt, 10}]}]).
@@ -99,37 +99,37 @@ great than, less than, great than or equal, less than or equal
 	%% find documents where field1 is greater than or equal to 5 and less than or equal to 10
 	emongo:find(test, "collection", [{"field1", [{'>=', 5}, {'=<', 10}]}]).
 	
-not equal
+__not equal__
 
 	%% find documents where field1 is not equal to 5 or 10
 	emongo:find(test, "collection", [{"field1", [{ne, 5}, {ne, 10}]}]).
 	
-in
+__in__
 
 	%% find documents where the value of field1 is one of the values in the list [1,2,3,4,5]
 	emongo:find(test, "collection", [{"field1", [{in, [1,2,3,4,5]}]}]).
 
-not in
+__not in__
 	
 	%% find documents where the value of field1 is NOT one of the values in the list [1,2,3,4,5]
 	emongo:find(test, "collection", [{"field1", [{nin, [1,2,3,4,5]}]}]).
 	
-all
+__all__
 
 	%% find documents where the value of field1 is an array and contains all of the values in the list [1,2,3,4,5]
 	emongo:find(test, "collection", [{"field1", [{all, [1,2,3,4,5]}]}]).
 	
-size
+__size__
 
 	%% find documents where the value of field1 is an array of size 10
 	emongo:find(test, "collection", [{"field1", [{size, 10}]}]).
 	
-exists
+__exists__
 
 	%% find documents where field1 exists
 	emongo:find(test, "collection", [{"field1", [{exists, true}]}]).
 	
-where
+__where__
 
 	%% find documents where the value of field1 is greater than 10
 	emongo:find(test, "collection", [{where, "this.field1 > 10"}]).
