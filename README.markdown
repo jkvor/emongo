@@ -74,3 +74,62 @@ Result = [Document] | response()
 	emongo:find(PoolName, CollectionName) -> Result
 	emongo:find(PoolName, CollectionName, Selector) -> Result
 	emongo:find(PoolName, CollectionName, Selector, Options) -> Result
+	
+#### Examples
+
+limit, offset, timeout, orderby, fields
+
+	%% find documents from 'collection' where field1 equals 1 and abort the query if it takes more than 5 seconds
+	%% limit the number of results to 100 and offset the first document 10 documents from the beginning
+	%% return documents in ascending order, sorted by the value of field1
+	%% limit the fields in the return documents to field1 (the _id field is always included in the results)
+	emongo:find(test, "collection", [{"field1", 1}], [{limit, 100}, {offset, 10}, {timeout, 5000}, {orderby, [{"field1", asc}]}, {fields, ["field1"]}]).
+	
+great than, less than, great than or equal, less than or equal
+
+	%% find documents where field1 is greater than 5 and less than 10
+	emongo:find(test, "collection", [{"field1", [{gt, 5}, {lt, 10}]}]).
+	  
+	%% find documents where field1 is greater than or equal to 5 and less than or equal to 10
+	emongo:find(test, "collection", [{"field1", [{gte, 5}, {lte, 10}]}]).
+	  
+	%% find documents where field1 is greater than 5 and less than 10
+	emongo:find(test, "collection", [{"field1", [{'>', 5}, {'<', 10}]}]).
+	  
+	%% find documents where field1 is greater than or equal to 5 and less than or equal to 10
+	emongo:find(test, "collection", [{"field1", [{'>=', 5}, {'=<', 10}]}]).
+	
+not equal
+
+	%% find documents where field1 is not equal to 5 or 10
+	emongo:find(test, "collection", [{"field1", [{ne, 5}, {ne, 10}]}]).
+	
+in
+
+	%% find documents where the value of field1 is one of the values in the list [1,2,3,4,5]
+	emongo:find(test, "collection", [{"field1", [{in, [1,2,3,4,5]}]}]).
+
+not in
+	
+	%% find documents where the value of field1 is NOT one of the values in the list [1,2,3,4,5]
+	emongo:find(test, "collection", [{"field1", [{nin, [1,2,3,4,5]}]}]).
+	
+all
+
+	%% find documents where the value of field1 is an array and contains all of the values in the list [1,2,3,4,5]
+	emongo:find(test, "collection", [{"field1", [{all, [1,2,3,4,5]}]}]).
+	
+size
+
+	%% find documents where the value of field1 is an array of size 10
+	emongo:find(test, "collection", [{"field1", [{size, 10}]}]).
+	
+exists
+
+	%% find documents where field1 exists
+	emongo:find(test, "collection", [{"field1", [{exists, true}]}]).
+	
+where
+
+	%% find documents where the value of field1 is greater than 10
+	emongo:find(test, "collection", [{where, "this.field1 > 10"}]).
