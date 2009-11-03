@@ -95,74 +95,49 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Field = string() | binary() | atom() | integer() = specifies a field to return in the result set
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
-find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector) ->
+find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = create_query(Options, #emo_query{q=Selector}),
+	Query = create_query(Options, #emo_query{}, Selector, []),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	case lists:member(response_options, Options) of
 		true -> Resp;
 		false -> Resp#response.documents
 	end.
-
-create_query([], Query) ->
-	Query;
-	
-create_query([{limit, Limit}|Options], Query) ->
-	Query1 = Query#emo_query{limit=Limit},
-	create_query(Options, Query1);
-	
-create_query([{offset, Offset}|Options], Query) ->
-	Query1 = Query#emo_query{offset=Offset},
-	create_query(Options, Query1);
-
-create_query([{orderby, Orderby}|Options], Query) ->
-	Selector = Query#emo_query.q,
-	Query1 = Query#emo_query{q=[{<<"orderby">>, Orderby}|Selector]},
-	create_query(Options, Query1);
-	
-create_query([{fields, Fields}|Options], Query) ->
-	Query1 = Query#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
-	create_query(Options, Query1);
-	
-create_query([_|Options], Query) ->
-	create_query(Options, Query).
 	
 %%------------------------------------------------------------------------------
 %% find_all
 %%------------------------------------------------------------------------------
 find_all(PoolId, Collection) ->
-	find_all(PoolId, Collection, [], ?TIMEOUT).
+	find_all(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
-find_all(PoolId, Collection, Document) ->
-	find_all(PoolId, Collection, Document, ?TIMEOUT).
+find_all(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
+	find_all(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
 
-find_all(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
-	find_all(PoolId, Collection, #emo_query{q=Document}, Timeout);
-
-find_all(PoolId, Collection, Query, Timeout) when is_record(Query, emo_query) ->
-	Resp = find(PoolId, Collection, Query, Timeout),
-	find_all(PoolId, Collection, Resp, Timeout);
+find_all(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
+	Resp = find(PoolId, Collection, Selector, [response_options|Options]),
+	find_all(PoolId, Collection, Selector, Options, Resp).
 	
-find_all(_PoolId, _Collection, Resp, _Timeout) when is_record(Resp, response), Resp#response.cursor_id == 0 ->
-	Resp;
+find_all(_PoolId, _Collection, _Selector, Options, Resp) when is_record(Resp, response), Resp#response.cursor_id == 0 ->
+	case lists:member(response_options, Options) of
+		true -> Resp;
+		false -> Resp#response.documents
+	end;
 	
-find_all(PoolId, Collection, Resp, Timeout) when is_record(Resp, response) ->
-	Resp1 = get_more(PoolId, Collection, Resp#response.cursor_id, Timeout),
+find_all(PoolId, Collection, Selector, Options, Resp) when is_record(Resp, response) ->
+	Resp1 = get_more(PoolId, Collection, Resp#response.cursor_id, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	Documents = lists:append(Resp#response.documents, Resp1#response.documents),
-	find_all(PoolId, Collection, Resp1#response{documents=Documents}, Timeout).
+	find_all(PoolId, Collection, Selector, Options, Resp1#response{documents=Documents}).
 
 %%------------------------------------------------------------------------------
 %% find_one
 %%------------------------------------------------------------------------------
-find_one(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
-	find_one(PoolId, Collection, Document, ?TIMEOUT).
+find_one(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
+	find_one(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
 
-find_one(PoolId, Collection, Document, Timeout) when ?IS_DOCUMENT(Document) ->
-	find(PoolId, Collection, #emo_query{q=Document, limit=1}, Timeout);
-
-find_one(PoolId, Collection, {oid, OID}, Timeout) when is_binary(OID) ->
-	find(PoolId, Collection, #emo_query{q=[{"_id", {oid, OID}}], limit=1}, Timeout).
+find_one(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
+	Options1 = [{limit, 1} | lists:delete(limit, Options)],
+	find(PoolId, Collection, Selector, Options1).
 
 %%------------------------------------------------------------------------------
 %% get_more
@@ -419,6 +394,34 @@ hex2dec(N,<<A:8,B:8,Rem/binary>>) ->
 hex2dec(N,<<>>) ->
 	N.
 
+create_query([], QueryRec, QueryDoc, []) ->
+	QueryRec#emo_query{q=QueryDoc};
+
+create_query([], QueryRec, [], OptDoc) ->	
+	QueryRec#emo_query{q=OptDoc};
+	
+create_query([], QueryRec, QueryDoc, OptDoc) ->
+	QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
+	
+create_query([{limit, Limit}|Options], QueryRec, QueryDoc, OptDoc) ->
+	QueryRec1 = QueryRec#emo_query{limit=Limit},
+	create_query(Options, QueryRec1, QueryDoc, OptDoc);
+	
+create_query([{offset, Offset}|Options], QueryRec, QueryDoc, OptDoc) ->
+	QueryRec1 = QueryRec#emo_query{offset=Offset},
+	create_query(Options, QueryRec1, QueryDoc, OptDoc);
+
+create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
+	OptDoc1 = [{<<"orderby">>, Orderby}|OptDoc],
+	create_query(Options, QueryRec, QueryDoc, OptDoc1);
+	
+create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
+	QueryRec1 = QueryRec#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
+	create_query(Options, QueryRec1, QueryDoc, OptDoc);
+	
+create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
+	create_query(Options, QueryRec, QueryDoc, OptDoc).
+	
 dec0($a) ->	10;
 dec0($b) ->	11;
 dec0($c) ->	12;
