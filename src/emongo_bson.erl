@@ -119,10 +119,15 @@ encode_key_value(Key, {regexp, Regexp, Options}) ->
 	<<11, Key1/binary, 0, RegexpBin/binary, 0, OptionsBin/binary, 0>>;
 	
 % INT
-encode_key_value(Key, Val) when is_integer(Val) ->
+encode_key_value(Key, Val) when is_integer(Val), Val =< 2147483647, Val >= -2147483648 ->
 	Key1 = encode_key(Key),
 	<<16, Key1/binary, 0, Val:32/little-signed>>;
 
+% LONG
+encode_key_value(Key, Val) when is_integer(Val) ->
+	Key1 = encode_key(Key),
+	<<18, Key1/binary, 0, Val:64/little-signed>>;
+	
 encode_key_value(Key, Val) ->
 	exit({oh_balls, Key, Val}).
 	
@@ -220,5 +225,9 @@ decode_value(10, Tail) ->
 decode_value(16, <<Int:32/little-signed, Tail/binary>>) ->
 	{Int, Tail};
 		
+%% LONG
+decode_value(18, <<Int:64/little-signed, Tail/binary>>) ->
+	{Int, Tail};
+	
 decode_value(_, _) ->
 	exit(oh_fuck).
