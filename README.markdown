@@ -139,3 +139,10 @@ __where__
 
 	%% find documents where the value of field1 is greater than 10
 	emongo:find(test, "collection", [{where, "this.field1 > 10"}]).
+	
+__nested queries__
+
+	%% find documents with an address field containing a sub-document containing
+	%% a street field equalling "Maple Drive".
+	%% ie: [{"address", [{"street", "Maple Drive"}, {"zip", 94114}]
+	emongo:find(test, "people", [{"address.street", "Maple Drive"}]).

@@ -49,5 +49,16 @@ main(_) ->
 		etap:is(proplists:get_value(<<"rolls">>, hd(Docs)), 100, "query returned correct value"),
 		ok
 	end)(),
+	
+	%% NESTED QUERIES
+	[emongo:insert(test1, "sushi", [{<<"seaweed">>, [{<<"sheets">>, I}]}]) || I <- lists:seq(1,10)],
+	
+	(fun() ->
+		Docs = emongo:find(test1, "sushi", [{"seaweed.sheets", 5}]),
+		etap:is(length(Docs), 1, "correct number of results from nested query"),
+		etap:is(proplists:get_value(<<"seaweed">>, hd(Docs)), [{<<"sheets">>, 5}], "correct result returned"),
+		ok
+	end)(),
+	
 
    	etap:end_tests().
