@@ -98,4 +98,13 @@ main(_) ->
 		ok
 	end)(),
 	
+	[emongo:insert(test1, "sushi", [{<<"seaweed">>, [{<<"sheets">>, I}]}]) || I <- lists:seq(1,10)],
+	
+	(fun() ->
+		Docs = emongo:find(test1, "sushi", [{"seaweed.sheets", [{in, [3,4,5]}]}]),
+		etap:is(length(Docs), 3, "correct number of results from nested query"),
+		etap:is([I || [_, {<<"seaweed">>, [{<<"sheets">>, I}]}] <- Docs], [3,4,5], "correct results from where query"),
+		ok
+	end)(),
+	
    	etap:end_tests().
