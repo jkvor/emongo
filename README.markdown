@@ -142,7 +142,7 @@ __where__
 	
 __nested queries__
 
-	%% find documents with an address field containing a sub-document containing
-	%% a street field equalling "Maple Drive".
+	%% find documents with an address field containing a sub-document 
+	%% with street equal to "Maple Drive".
 	%% ie: [{"address", [{"street", "Maple Drive"}, {"zip", 94114}]
 	emongo:find(test, "people", [{"address.street", "Maple Drive"}]).
