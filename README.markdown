@@ -59,6 +59,53 @@ __BinSubType__ = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteon
 
 	emongo:add_pool(PoolName, Host, Port, Database, PoolSize) -> ok
 
+## Insert
+
+__PoolName__ = atom()  
+__CollectionName__ = string()  
+__Document__ = [{Key, Val}]  
+__Documents__ = [Document]  
+
+	emongo:insert(PoolName, CollectionName, Document) -> ok
+	emongo:insert(PoolName, CollectionName, Documents) -> ok
+	
+### Examples
+
+	%% insert a single document with two fields into the "collection" collection
+	emongo:insert(test, "collection", [{"field1", "value1"}, {"field2", "value2"}]).
+	
+	%% insert two documents, each with a single field into the "collection" collection
+	emongo:insert(test, "collection", [[{"document1_field1", "value1"}], [{"document2_field1", "value1"}]]).	
+
+## Update
+
+__PoolName__ = atom()  
+__CollectionName__ = string()  
+__Selector__ = Document  
+__Document__ = [{Key, Val}]  
+__Upsert__ = true | false (insert a new document if the selector does not match an existing document)
+
+	%% by default upsert == false
+	emongo:update(PoolName, CollectionName, Selector, Document) -> ok
+	emongo:update(PoolName, CollectionName, Selector, Document, Upsert) -> ok
+	
+### Examples
+
+	%% update the document that matches "field1" == "value1"
+	emongo:update(test, "collection", [{"field1", "value1"}], [{"field1", "value1"}, {"field2", "value2"}]).
+
+## Delete
+
+__PoolName__ = atom()  
+__CollectionName__ = string()  
+__Selector__ = Document  
+
+	%% delete all documents in a collection
+	emongo:delete(PoolName, CollectionName) -> ok
+	
+	%% delete all documents in a collection that match a selector
+	emongo:delete(PoolName, CollectionName, Selector) -> ok
+	
 ## Find
 	
 __Options__ = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | response_options  
