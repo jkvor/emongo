@@ -44,12 +44,25 @@ send(Pid, ReqID, Packet) ->
 	end.
 	
 send_recv(Pid, ReqID, Packet, Timeout) ->
-	case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
-		{ok, Resp} ->
-			Documents = emongo_bson:decode(Resp#response.documents),
-			Resp#response{documents=Documents};
-		{error, Reason} -> 
-			exit(Reason)
+    try
+        case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
+            {ok, Resp} ->
+                Documents = emongo_bson:decode(Resp#response.documents),
+                Resp#response{documents=Documents};
+            {error, _ErrorReason} -> 
+			    #response{documents=[]}
+        end
+    catch 
+        exit:timeout->
+            %Clear the state from the timed out call
+            case gen:call(Pid, '$emongo_recv_timeout', ReqID, Timeout) of
+                {ok, _} ->
+			        #response{documents=[]};
+                {error, _} -> 
+                    #response{documents=[]}
+            end;
+        exit:ExitReason ->
+            exit(ExitReason)
 	end.
 	
 loop(State, Leftover) ->
@@ -64,6 +77,19 @@ loop(State, Leftover) ->
 			Request = #request{req_id=ReqID, requestor={From, Mref}},
 			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
 			loop(State1, Leftover);
+		{'$emongo_recv_timeout', {From, Mref}, ReqID} -> 
+            case find_request(ReqID, State#state.requests, []) of
+                {undefined, Others} ->
+                    gen:reply({From, Mref}, ok),
+                    loop(State#state{requests=Others}, Leftover);
+                {_, Others} ->
+                    gen:reply({From, Mref}, ok),
+                    %Loop again, but drop any leftovers to 
+                    %prevent the loop response processing
+                    %from getting out of sync and causing all
+                    %subsequent calls to send_recv to fail.
+                    loop(State#state{requests=Others}, <<>>)
+            end;
 		{tcp, Socket, Data} ->
 			case emongo_packet:decode_response(<<Leftover/binary, Data/binary>>) of
 				undefined ->
@@ -71,8 +97,9 @@ loop(State, Leftover) ->
 				{Resp, Tail} ->
 					ResponseTo = (Resp#response.header)#header.response_to,
 					case find_request(ResponseTo, State#state.requests, []) of
-						{undefined, _} ->
-							exit({unexpected_response, Resp});
+						{undefined, Others} ->
+							%exit({unexpected_response, Resp});
+							loop(State#state{requests=Others}, Tail);
 						{Request, Others} ->
 							gen:reply(Request#request.requestor, Resp),
 							loop(State#state{requests=Others}, Tail)
@@ -100,3 +127,4 @@ find_request(RequestID, [Request|Tail], OtherReqs) ->
 	
 find_request(_RequestID, [], OtherReqs) ->
 	{undefined, OtherReqs}.
+
