@@ -342,16 +342,18 @@ initialize_pools() ->
 		undefined ->
 			[];
 		{ok, Pools} ->
-			[begin
-				Pool = #pool{
-					id = PoolId, 
-					size = proplists:get_value(size, Props, 1),
-					host = proplists:get_value(host, Props, "localhost"), 
-					port = proplists:get_value(port, Props, 27017), 
-					database = proplists:get_value(database, Props, "test")
-				},
-				{PoolId, do_open_connections(Pool)}
-			 end || {PoolId, Props} <- Pools]
+			F = fun({PoolId, Props}) ->
+					Pool = #pool{
+						id = PoolId, 
+						size = proplists:get_value(size, Props, 1),
+						host = proplists:get_value(host, Props, "localhost"), 
+						port = proplists:get_value(port, Props, 27017), 
+						database = proplists:get_value(database, Props, "test")
+					},
+					{PoolId, do_open_connections(Pool)}
+				end,
+			
+			lists:map(F, Pools)
 	end.
 		
 do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 

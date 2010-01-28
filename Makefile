@@ -1,27 +1,20 @@
-VERSION=0.0.1
 PKGNAME=emongo
-LIBDIR=`erl -eval 'io:format("~s~n", [code:lib_dir()])' -s init stop -noshell`
 ROOTDIR=`erl -eval 'io:format("~s~n", [code:root_dir()])' -s init stop -noshell`
+LIBDIR=$(shell erl -eval 'io:format("~s~n", [code:lib_dir()])' -s init stop -noshell)
+# get application vsn from app file
+VERSION=$(shell erl -pa ebin/ -eval 'application:load(erldis), {ok, Vsn} = application:get_key(erldis, vsn), io:format("~s~n", [Vsn])' -s init stop -noshell)
 
-all: rel
-	
-compile: app
-	mkdir -p ebin/
-	(cd src;$(MAKE))
+all: src
 
-app:
-	sh ebin/$(PKGNAME).app.in $(VERSION)
+src: FORCE
+	@erl -make
 
-test: compile
+test: src
 	prove t/*.t
 
 clean:
-	(cd src;$(MAKE) clean)
-	rm -rf erl_crash.dump *.boot *.rel *.script ebin/*.beam ebin/*.app
+	rm -rf erl_crash.dump *.boot *.rel *.script ebin/*.beam
 
-rel: compile
-	erl -pa ebin -noshell -run emongo_app build_rel -s init stop
-	
 package: clean
 	@mkdir $(PKGNAME)-$(VERSION)/ && cp -rf ebin include Makefile priv README.markdown src support t $(PKGNAME)-$(VERSION)
 	@COPYFILE_DISABLE=true tar zcf $(PKGNAME)-$(VERSION).tgz $(PKGNAME)-$(VERSION)
@@ -32,3 +25,11 @@ install:
 	@mkdir -p $(prefix)/$(ROOTDIR)/bin
 	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
 	cp *.boot $(prefix)/$(ROOTDIR)/bin/
+
+plt:
+	@dialyzer --build_plt --output_plt .plt -q -r . -I include/
+
+check: all
+	@dialyzer --check_plt --plt .plt -q -r . -I include/
+
+FORCE:

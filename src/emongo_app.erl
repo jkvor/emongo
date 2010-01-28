@@ -21,43 +21,11 @@
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_app).
+
 -behaviour(application).
 
--export([start/2,stop/1, init/1, build_rel/0]).
+-export([start/2, stop/1]).
 
-start(_, _) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start(_, _) -> emongo_sup:start_link().
 
 stop(_) -> ok.
-
-init(_) ->
-   {ok, {{one_for_one, 10, 10}, [
-       {emongo, {emongo, start_link, []}, permanent, 5000, worker, [emongo]}
-   ]}}.
-
-build_rel() ->
-	Apps = [kernel,stdlib,sasl],
-    {ok, FD} = file:open("emongo.rel", [write]),
-    RelInfo = {release,
-        {"emongo", "0.3"},
-        get_app_version(erts), 
-            [get_app_version(AppName) || AppName <- Apps] ++ [
-            {emongo, "0.0.1"}
-        ]
-    },
-    io:format(FD, "~p.", [RelInfo]),
-    file:close(FD),
-    systools:make_script("emongo", [local]),
-    ok.
-
-get_app_version(AppName) ->
-	case code:lib_dir(AppName) of
-		{error, bad_name} ->
-			exit({bad_name, AppName});
-		Dir ->
-			case lists:reverse(string:tokens(Dir, "-")) of
-				[Vsn|_] -> {AppName, Vsn};
-				_ ->
-					exit({failed_to_tokenize, Dir})
-			end
-	end.
