@@ -2,7 +2,7 @@
 	{description, "Erlang MongoDB Driver"},
 	{vsn, "0.0.2"},
 	{modules, [
-		emongo, emongo_app, emongo_sup, emongo_bson, emongo_conn, emongo_packet
+		emongo, emongo_app, emongo_sup, emongo_bson, emongo_packet, emongo_server
 	]},
 	{registered, [emongo_sup, emongo]},
 	{mod, {emongo_app, []}},

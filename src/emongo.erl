@@ -77,7 +77,7 @@ find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
+	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
 	
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
@@ -99,7 +99,7 @@ find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Query = create_query(Options, Selector),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
+	Resp = emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	case lists:member(response_options, Options) of
 		true -> Resp;
 		false -> Resp#response.documents
@@ -148,7 +148,7 @@ get_more(PoolId, Collection, CursorID, Timeout) ->
 get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:get_more(Pool#pool.database, Collection, Pool#pool.req_id, NumToReturn, CursorID),
-	emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
+	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
 	
 kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
 	kill_cursors(PoolId, [CursorID]);
@@ -156,7 +156,7 @@ kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
 kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:kill_cursors(Pool#pool.req_id, CursorIDs),
-	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 	
 %%------------------------------------------------------------------------------
 %% insert
@@ -167,7 +167,7 @@ insert(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
 insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Documents),
-	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 %%------------------------------------------------------------------------------
 %% update
@@ -178,7 +178,7 @@ update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_
 update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:update(Pool#pool.database, Collection, Pool#pool.req_id, Upsert, Selector, Document),
-	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 %%------------------------------------------------------------------------------
 %% delete
@@ -189,7 +189,7 @@ delete(PoolId, Collection) ->
 delete(PoolId, Collection, Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, Selector),
-	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 %%------------------------------------------------------------------------------
 %% ensure index
@@ -197,13 +197,13 @@ delete(PoolId, Collection, Selector) ->
 ensure_index(PoolId, Collection, Keys) when ?IS_DOCUMENT(Keys)->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:ensure_index(Pool#pool.database, Collection, Pool#pool.req_id, Keys),
-	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
+	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 count(PoolId, Collection) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}], limit=1},
 	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
-	case emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
+	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
 		#response{documents=[[{<<"n">>,Count}|_]]} ->
 			round(Count);
 		_ ->
@@ -359,7 +359,8 @@ initialize_pools() ->
 do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 
 	case queue:len(Pids) < Size of
 		true ->
-			Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
+			%Pid = emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
+			{ok, Pid} = emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
 			do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)});
 		false ->
 			Pool
