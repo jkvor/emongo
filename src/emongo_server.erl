@@ -15,8 +15,8 @@ start_link(PoolId, Host, Port) ->
 	gen_server:start_link(?MODULE, [PoolId, Host, Port], []).
 
 send(Pid, ReqID, Packet) ->
-	case gen_server:call(Pid, {send, ReqID, Packet}) of
-		{ok, Result} -> Result;
+	case gen_server:cast(Pid, {send, ReqID, Packet}) of
+		ok -> ok;
 		{error, Reason} -> exit(Reason)
 	end.
 	
@@ -43,17 +43,15 @@ init([PoolId, Host, Port]) ->
 	Socket = open_socket(Host, Port),
 	{ok, #state{pool_id=PoolId, socket=Socket, requests=[], leftover = <<>>}}.
 
-handle_call({send, _, Packet}, _From, State) ->
-	% TODO: make this a cast
-	gen_tcp:send(State#state.socket, Packet),
-	{reply, ok, State};
 handle_call({send_recv, ReqID, Packet}, From, State) ->
 	gen_tcp:send(State#state.socket, Packet),
 	Request = #request{req_id=ReqID, requestor=From},
 	State1 = State#state{requests=[{ReqID, Request} | State#state.requests]},
 	{noreply, State1}.
 
-handle_cast(_, State) -> {noreply, State}.
+handle_cast({send, _, Packet}, State) ->
+	gen_tcp:send(State#state.socket, Packet),
+	{noreply, State}.
 
 handle_info({tcp, _Socket, Data}, State) ->
 	Leftover = <<(State#state.leftover)/binary, Data/binary>>,
