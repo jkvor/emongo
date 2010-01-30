@@ -24,8 +24,32 @@
 
 -behaviour(application).
 
+-include("emongo.hrl").
+
 -export([start/2, stop/1]).
 
-start(_, _) -> emongo_sup:start_link().
+start(_, _) ->
+	{ok, Pid} = emongo_sup:start_link(),
+	% Pools must be initialized after emongo_sup is started instead of in
+	% emongo:init, because emongo_server_sup instances are dynamically added
+	% to the emongo_sup supervisor, which also supervises emongo gen_server.
+	% (otherwise get a deadlock where emongo is waiting on emongo_sup, which
+	% is waiting on emongo)
+	initialize_pools(),
+	{ok, Pid}.
 
 stop(_) -> ok.
+
+initialize_pools() ->
+	F = fun({PoolId, Props}) ->
+			Host = proplists:get_value(host, Props, "localhost"),
+			Port = proplists:get_value(port, Props, 27017),
+			Database = proplists:get_value(database, Props, "test"),
+			Size = proplists:get_value(size, Props, 1),
+			emongo:add_pool(PoolId, Host, Port, Database, Size)
+		end,
+	
+	case application:get_env(emongo, pools) of
+		undefined -> ok;
+		{ok, Pools} -> lists:foreach(F, Pools)
+	end.

@@ -1,5 +1,5 @@
 %% Copyright (c) 2009 Jacob Vorreuter <jacob.vorreuter@gmail.com>
-%% 
+%%
 %% Permission is hereby granted, free of charge, to any person
 %% obtaining a copy of this software and associated documentation
 %% files (the "Software"), to deal in the Software without
@@ -8,10 +8,10 @@
 %% copies of the Software, and to permit persons to whom the
 %% Software is furnished to do so, subject to the following
 %% conditions:
-%% 
+%%
 %% The above copyright notice and this permission notice shall be
 %% included in all copies or substantial portions of the Software.
-%% 
+%%
 %% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 %% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 %% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -23,7 +23,7 @@
 -module(emongo).
 -behaviour(gen_server).
 
--export([start_link/0, init/1, handle_call/3, handle_cast/2, 
+-export([start_link/0, init/1, handle_call/3, handle_cast/2,
 		 handle_info/2, terminate/2, code_change/3]).
 
 -export([pools/0, oid/0, add_pool/5, find/2, find/3, find/4,
@@ -54,13 +54,13 @@
 %%--------------------------------------------------------------------
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-		
+
 pools() ->
 	gen_server:call(?MODULE, pools, infinity).
-	
+
 oid() ->
 	gen_server:call(?MODULE, oid, infinity).
-	
+
 add_pool(PoolId, Host, Port, Database, Size) ->
 	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
 
@@ -72,13 +72,13 @@ find(PoolId, Collection) ->
 
 find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]);
-	
+
 %% this function has been deprecated
 find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
-	
+
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
 %%		 Collection = string()
@@ -99,12 +99,23 @@ find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Query = create_query(Options, Selector),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
-	Resp = emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
-	case lists:member(response_options, Options) of
-		true -> Resp;
-		false -> Resp#response.documents
+	Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
+	% TODO: generalize this for all send_recv calls
+	try emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, Timeout) of
+		Resp ->
+			case lists:member(response_options, Options) of
+				true -> Resp;
+				false -> Resp#response.documents
+			end
+	catch
+		exit:{timeout, Reason} ->
+			% force restart of affected emongo_server and try again with a new
+			% emongo_server pid
+			error_logger:warning_report([{timeout, Pid}]),
+			exit(Pid, Reason),
+			find(PoolId, Collection, Selector, Options)
 	end.
-	
+
 %%------------------------------------------------------------------------------
 %% find_all
 %%------------------------------------------------------------------------------
@@ -117,13 +128,13 @@ find_all(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 find_all(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	Resp = find(PoolId, Collection, Selector, [response_options|Options]),
 	find_all(PoolId, Collection, Selector, Options, Resp).
-	
+
 find_all(_PoolId, _Collection, _Selector, Options, Resp) when is_record(Resp, response), Resp#response.cursor_id == 0 ->
 	case lists:member(response_options, Options) of
 		true -> Resp;
 		false -> Resp#response.documents
 	end;
-	
+
 find_all(PoolId, Collection, Selector, Options, Resp) when is_record(Resp, response) ->
 	Resp1 = get_more(PoolId, Collection, Resp#response.cursor_id, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	Documents = lists:append(Resp#response.documents, Resp1#response.documents),
@@ -144,26 +155,26 @@ find_one(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_
 %%------------------------------------------------------------------------------
 get_more(PoolId, Collection, CursorID, Timeout) ->
 	get_more(PoolId, Collection, CursorID, 0, Timeout).
-	
+
 get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:get_more(Pool#pool.database, Collection, Pool#pool.req_id, NumToReturn, CursorID),
 	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
-	
+
 kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
 	kill_cursors(PoolId, [CursorID]);
-	
+
 kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:kill_cursors(Pool#pool.req_id, CursorIDs),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
-	
+
 %%------------------------------------------------------------------------------
 %% insert
 %%------------------------------------------------------------------------------
 insert(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
 	insert(PoolId, Collection, [Document]);
-	
+
 insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Documents),
@@ -174,7 +185,7 @@ insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
 %%------------------------------------------------------------------------------
 update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
 	update(PoolId, Collection, Selector, Document, false).
-	
+
 update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:update(Pool#pool.database, Collection, Pool#pool.req_id, Upsert, Selector, Document),
@@ -185,7 +196,7 @@ update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selecto
 %%------------------------------------------------------------------------------
 delete(PoolId, Collection) ->
 	delete(PoolId, Collection, []).
-	
+
 delete(PoolId, Collection, Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, Selector),
@@ -225,10 +236,10 @@ count(PoolId, Collection) ->
 %%--------------------------------------------------------------------
 init(_) ->
 	process_flag(trap_exit, true),
-	Pools = initialize_pools(),
+	%Pools = initialize_pools(),
 	{ok, HN} = inet:gethostname(),
 	<<HashedHN:3/binary,_/binary>> = erlang:md5(HN),
-	{ok, #state{pools=Pools, oid_index=1, hashed_hostn=HashedHN}}.
+	{ok, #state{pools=[], oid_index=1, hashed_hostn=HashedHN}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -241,47 +252,50 @@ init(_) ->
 %%--------------------------------------------------------------------
 handle_call(pools, _From, State) ->
 	{reply, State#state.pools, State};
-	
+
 handle_call(oid, _From, State) ->
 	{Total_Wallclock_Time, _} = erlang:statistics(wall_clock),
 	Front = Total_Wallclock_Time rem 16#ffffffff,
 	<<_:20/binary,PID:2/binary,_/binary>> = term_to_binary(self()),
 	Index = State#state.oid_index rem 16#ffffff,
 	{reply, <<Front:32, (State#state.hashed_hostn)/binary, PID/binary, Index:24>>, State#state{oid_index = State#state.oid_index + 1}};
-	
+
 handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=Pools}=State) ->
-	{Result, Pools1} = 
-		case proplists:is_defined(PoolId, Pools) of
-			true ->
-				{{error, pool_already_exists}, Pools};
-			false ->
-				Pool = #pool{
-					id=PoolId,
-					host=Host,
-					port=Port,
-					database=Database,
-					size=Size
-				},
-				Pool1 = do_open_connections(Pool),
-				{ok, [{PoolId, Pool1}|Pools]}
-		end,
-	{reply, Result, State#state{pools=Pools1}};
-	
-handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
-	case get_pool(PoolId, Pools) of
-		undefined ->
-			{reply, {undefined, undefined}, State};
-		{Pool, Others} ->			
-			case queue:out(Pool#pool.conn_pids) of
-				{{value, Pid}, Q2} ->
-					Pool1 = Pool#pool{conn_pids = queue:in(Pid, Q2), req_id = ((Pool#pool.req_id)+1)},
-					Pools1 = [{PoolId, Pool1}|Others],
-					{reply, {Pid, Pool}, State#state{pools=Pools1}};
-				{empty, _} ->
-					{reply, {undefined, Pool}, State}
-			end
+	case proplists:is_defined(PoolId, Pools) of
+		true ->
+			{reply, {error, pool_already_exists}, State};
+		false ->
+			Pool = #pool{
+				id=PoolId,
+				host=Host,
+				port=Port,
+				database=Database,
+				size=Size
+			},
+
+			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port),
+			Pool1 = do_open_connections(Pool),
+			{reply, ok, State#state{pools=[{PoolId, Pool1}|Pools]}}
 	end;
-	
+
+handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
+	case lists:keytake(PoolId, 1, Pools) of
+		false ->
+			{reply, {undefined, undefined}, State};
+		{value, {PoolId, Pool}, Others} ->
+			N = Pool#pool.conn_pid,
+			Pid = emongo_server_sup:nth_child_pid(Pool#pool.id, N),
+			
+			if
+				N < Pool#pool.size -> N1 = N + 1;
+				true -> N1 = 1
+			end,
+			
+			Pool1 = Pool#pool{conn_pid=N1, req_id=(Pool#pool.req_id)+1},
+			Pools1 = [{PoolId, Pool1} | Others],
+			{reply, {Pid, Pool}, State#state{pools=Pools1}}
+	end;
+
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 
 %%--------------------------------------------------------------------
@@ -299,21 +313,21 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
-	io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
-	State1 =
-		case get_pool(PoolId, Pools) of
-			undefined ->
-				State;
-			{Pool, Others} ->
-				Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
-				Pool1 = Pool#pool{conn_pids = Pids1},
-				Pool2 = do_open_connections(Pool1),
-				Pools1 = [{PoolId, Pool2}|Others],
-				State#state{pools=Pools1}
-		end,
-	{noreply, State1};
-	
+%handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
+	%io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
+	%State1 =
+		%case get_pool(PoolId, Pools) of
+			%undefined ->
+				%State;
+			%{Pool, Others} ->
+				%Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
+				%Pool1 = Pool#pool{conn_pids = Pids1},
+				%Pool2 = do_open_connections(Pool1),
+				%Pools1 = [{PoolId, Pool2}|Others],
+				%State#state{pools=Pools1}
+		%end,
+	%{noreply, State1};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -337,50 +351,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-initialize_pools() ->
-	case application:get_env(emongo, pools) of
-		undefined ->
-			[];
-		{ok, Pools} ->
-			F = fun({PoolId, Props}) ->
-					Pool = #pool{
-						id = PoolId, 
-						size = proplists:get_value(size, Props, 1),
-						host = proplists:get_value(host, Props, "localhost"), 
-						port = proplists:get_value(port, Props, 27017), 
-						database = proplists:get_value(database, Props, "test")
-					},
-					{PoolId, do_open_connections(Pool)}
-				end,
-			
-			lists:map(F, Pools)
-	end.
-		
-do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 
-	case queue:len(Pids) < Size of
-		true ->
-			%Pid = emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
-			{ok, Pid} = emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
-			do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)});
-		false ->
-			Pool
-	end.
 
-get_pool(PoolId, Pools) ->
-	get_pool(PoolId, Pools, []).
-	
-get_pool(_, [], _) ->
-	undefined;
-		
-get_pool(PoolId, [{PoolId, Pool}|Tail], Others) ->
-	{Pool, lists:append(Tail, Others)};
-	
-get_pool(PoolId, [Pool|Tail], Others) ->
-	get_pool(PoolId, Tail, [Pool|Others]).
-	
+do_open_connections(#pool{size=Size}=Pool) ->
+	% each connection is an emongo_server supervised by simple_one_for_one
+	% emongo_server_sup supervisor
+	F = fun(_) -> {ok, _} = emongo_server_sup:start_child(Pool#pool.id) end,
+	lists:foreach(F, lists:seq(1, Size)),
+	Pool.
+
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).
-	
+
 dec2hex(N, <<I:8,Rem/binary>>) ->
 	dec2hex(<<N/binary, (hex0((I band 16#f0) bsr 4)):8, (hex0((I band 16#0f))):8>>, Rem);
 dec2hex(N,<<>>) ->
@@ -388,10 +369,10 @@ dec2hex(N,<<>>) ->
 
 hex2dec(Hex) when is_list(Hex) ->
 	hex2dec(list_to_binary(Hex));
-	
+
 hex2dec(Hex) ->
 	hex2dec(<<>>, Hex).
-	
+
 hex2dec(N,<<A:8,B:8,Rem/binary>>) ->
 	hex2dec(<<N/binary, ((dec0(A) bsl 4) + dec0(B)):8>>, Rem);
 hex2dec(N,<<>>) ->
@@ -400,20 +381,20 @@ hex2dec(N,<<>>) ->
 create_query(Options, Selector) ->
 	Selector1 = transform_selector(Selector),
 	create_query(Options, #emo_query{}, Selector1, []).
-	
+
 create_query([], QueryRec, QueryDoc, []) ->
 	QueryRec#emo_query{q=QueryDoc};
 
-create_query([], QueryRec, [], OptDoc) ->	
+create_query([], QueryRec, [], OptDoc) ->
 	QueryRec#emo_query{q=OptDoc};
-	
+
 create_query([], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
-	
+
 create_query([{limit, Limit}|Options], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec1 = QueryRec#emo_query{limit=Limit},
 	create_query(Options, QueryRec1, QueryDoc, OptDoc);
-	
+
 create_query([{offset, Offset}|Options], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec1 = QueryRec#emo_query{offset=Offset},
 	create_query(Options, QueryRec1, QueryDoc, OptDoc);
@@ -422,27 +403,27 @@ create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
 	Orderby1 = [{Key, case Dir of desc -> -1; _ -> 1 end}|| {Key, Dir} <- Orderby],
 	OptDoc1 = [{<<"orderby">>, Orderby1}|OptDoc],
 	create_query(Options, QueryRec, QueryDoc, OptDoc1);
-	
+
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec1 = QueryRec#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
 	create_query(Options, QueryRec1, QueryDoc, OptDoc);
-	
+
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc).
-	
+
 transform_selector(Selector) ->
 	transform_selector(Selector, []).
-	
-transform_selector([], Acc) -> 
+
+transform_selector([], Acc) ->
 	lists:reverse(Acc);
-	
+
 transform_selector([{where, Val}|Tail], Acc) when is_list(Val) ->
 	transform_selector(Tail, [{<<"$where">>, Val}|Acc]);
-	
+
 transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
 	Vals1 =
 		[case Operator of
-			O when O == '>'; O == gt -> 
+			O when O == '>'; O == gt ->
 				{<<"$gt">>, Val};
 			O when O == '<'; O == lt ->
 				{<<"$lt">>, Val};
@@ -452,11 +433,11 @@ transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
 				{<<"$lte">>, Val};
 			O when O == '=/='; O == '/='; O == ne ->
 				{<<"$ne">>, Val};
-			in when is_list(Val) -> 
+			in when is_list(Val) ->
 				{<<"$in">>, {array, Val}};
-			nin when is_list(Val) -> 
+			nin when is_list(Val) ->
 				{<<"$nin">>, {array, Val}};
-			mod when is_list(Val), length(Val) == 2 -> 
+			mod when is_list(Val), length(Val) == 2 ->
 				{<<"$mod">>, {array, Val}};
 			all when is_list(Val) ->
 				{<<"$all">>, {array, Val}};
@@ -464,14 +445,14 @@ transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
 				{<<"$size">>, Val};
 			exists when is_boolean(Val) ->
 				{<<"$exists">>, Val};
-			_ -> 
+			_ ->
 				{Operator, Val}
 		 end || {Operator, Val} <- Vals],
 	transform_selector(Tail, [{Key, Vals1}|Acc]);
-	
+
 transform_selector([Other|Tail], Acc) ->
 	transform_selector(Tail, [Other|Acc]).
-	
+
 dec0($a) ->	10;
 dec0($b) ->	11;
 dec0($c) ->	12;
@@ -487,4 +468,3 @@ hex0(13) -> $d;
 hex0(14) -> $e;
 hex0(15) -> $f;
 hex0(I) ->  $0 + I.
-	

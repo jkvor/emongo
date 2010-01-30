@@ -19,16 +19,16 @@ send(Pid, ReqID, Packet) ->
 		ok -> ok;
 		{error, Reason} -> exit(Reason)
 	end.
-	
+
 send_recv(Pid, ReqID, Packet, Timeout) ->
 	case gen_server:call(Pid, {send_recv, ReqID, Packet}, Timeout) of
 		{ok, Resp} ->
 			Documents = emongo_bson:decode(Resp#response.documents),
 			Resp#response{documents=Documents};
-		{error, Reason} -> 
+		{error, Reason} ->
 			exit(Reason)
 	end.
-	
+
 open_socket(Host, Port) ->
 	case gen_tcp:connect(Host, Port, [binary, {active, true}, {nodelay, true}]) of
 		{ok, Sock} ->
@@ -38,7 +38,7 @@ open_socket(Host, Port) ->
 	end.
 
 %% gen_server %%
-	
+
 init([PoolId, Host, Port]) ->
 	Socket = open_socket(Host, Port),
 	{ok, #state{pool_id=PoolId, socket=Socket, requests=[], leftover = <<>>}}.
@@ -55,13 +55,13 @@ handle_cast({send, _, Packet}, State) ->
 
 handle_info({tcp, _Socket, Data}, State) ->
 	Leftover = <<(State#state.leftover)/binary, Data/binary>>,
-	
+
 	case emongo_packet:decode_response(Leftover) of
 		undefined ->
 			{noreply, State#state{leftover=Leftover}};
 		{Resp, Tail} ->
 			ResponseTo = (Resp#response.header)#header.response_to,
-			
+
 			case lists:keytake(ResponseTo, 1, State#state.requests) of
 				false ->
 					exit({unexpected_response, Resp});
