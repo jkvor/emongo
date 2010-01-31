@@ -3,17 +3,20 @@
 		{load_module, emongo},
 		{load_module, emongo_app},
 		{load_module, emongo_server},
-		{load_module, emongo_sup},
 		{add_module, emongo_server_sup},
-		{restart_application, emongo}
+		{update, emongo_sup, supervisor},
+		{apply, {supervisor, terminate_child, [emongo_sup, emongo]}},
+		{apply, {supervisor, restart_child, [emongo_sup, emongo]}},
+		{apply, {emongo_app, initialize_pools, []}}
 	]}
 ], [
 	{"0.0.2", [
 		{load_module, emongo},
 		{load_module, emongo_app},
 		{load_module, emongo_server},
-		{load_module, emongo_sup},
 		{delete_module, emongo_server_sup},
-		{restart_application, emongo}
+		{update, emongo_sup, supervisor},
+		{apply, {supervisor, terminate_child, [emongo_sup, emongo]}},
+		{apply, {supervisor, restart_child, [emongo_sup, emongo]}}
 	]}
 ]}.

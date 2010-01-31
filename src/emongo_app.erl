@@ -26,7 +26,7 @@
 
 -include("emongo.hrl").
 
--export([start/2, stop/1]).
+-export([start/2, stop/1, initialize_pools/0]).
 
 start(_, _) ->
 	{ok, Pid} = emongo_sup:start_link(),
