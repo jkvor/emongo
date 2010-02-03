@@ -45,22 +45,14 @@ send(Pid, ReqID, Packet) ->
 	
 send_recv(Pid, ReqID, Packet, Timeout) ->
     try
-        case gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout) of
-            {ok, Resp} ->
-                Documents = emongo_bson:decode(Resp#response.documents),
-                Resp#response{documents=Documents};
-            {error, _ErrorReason} -> 
-			    #response{documents=[]}
-        end
+        {ok, Resp} = gen:call(Pid, '$emongo_conn_send_recv', {ReqID, Packet}, Timeout),
+		Documents = emongo_bson:decode(Resp#response.documents),
+		Resp#response{documents=Documents}
     catch 
         exit:timeout->
             %Clear the state from the timed out call
-            case gen:call(Pid, '$emongo_recv_timeout', ReqID, Timeout) of
-                {ok, _} ->
-			        #response{documents=[]};
-                {error, _} -> 
-                    #response{documents=[]}
-            end;
+            gen:call(Pid, '$emongo_recv_timeout', ReqID, Timeout),
+			#response{documents=[]};
         exit:ExitReason ->
             exit(ExitReason)
 	end.
