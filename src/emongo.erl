@@ -253,7 +253,9 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 	{Result, Pools1} = 
 		case proplists:is_defined(PoolId, Pools) of
 			true ->
-				{{error, pool_already_exists}, Pools};
+                Pool = proplists:get_value(PoolId, Pools),
+                Pool1 = do_open_connections(Pool),
+                {ok, [{PoolId, Pool1}|proplists:delete(PoolId, Pools)]};
 			false ->
 				Pool = #pool{
 					id=PoolId,
