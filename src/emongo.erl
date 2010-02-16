@@ -199,7 +199,7 @@ delete(PoolId, Collection) ->
 
 delete(PoolId, Collection, Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, Selector),
+	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, transform_selector(Selector)),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 %%------------------------------------------------------------------------------
