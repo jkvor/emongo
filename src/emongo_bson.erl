@@ -37,7 +37,12 @@ encode_key_value(Key, Val) when is_float(Val) ->
 	<<1, Key1/binary, 0, Val:64/little-signed-float>>;
 
 %% STRING
-encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
+%% binary string must be already in utf8
+encode_key_value(Key, Val) when is_binary(Val) ->
+	Key1 = encode_key(Key),
+    <<2, Key1/binary, 0, (byte_size(Val)+1):32/little-signed, Val/binary, 0:8>>;
+
+encode_key_value(Key, Val) when Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
 	Key1 = encode_key(Key),
 	case unicode:characters_to_binary(Val) of
 		{error, Bin, RestData} ->
