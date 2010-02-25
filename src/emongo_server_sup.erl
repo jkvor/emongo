@@ -12,14 +12,16 @@
 %%%%%%%%%%%%%%%%
 
 start_link(PoolId, Host, Port) ->
-	supervisor:start_link({local, PoolId}, ?MODULE, [PoolId, Host, Port]).
+	supervisor:start_link(?MODULE, [PoolId, Host, Port]).
 
-child_count(PoolId) -> length(supervisor:which_children(PoolId)).
+child_count(PoolId) ->
+    length(supervisor:which_children(pool_pid(PoolId))).
 
-start_child(PoolId) -> supervisor:start_child(PoolId, []).
+start_child(PoolId) ->
+    supervisor:start_child(pool_pid(PoolId), []).
 
 nth_child_pid(PoolId, N) ->
-	Children = supervisor:which_children(PoolId),
+	Children = supervisor:which_children(pool_pid(PoolId)),
 	
 	if
 		N > length(Children) ->
@@ -28,6 +30,11 @@ nth_child_pid(PoolId, N) ->
 			{undefined, Pid, worker, [emongo_server]} = lists:nth(N, Children),
 			Pid
 	end.
+
+pool_pid(PoolId) ->
+    [PoolPid] = [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(emongo_sup),
+                        PoolId =:= Id],
+    PoolPid.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %% supervisor callbacks %%
