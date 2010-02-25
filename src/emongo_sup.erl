@@ -2,7 +2,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_pool/3, init/1]).
+-export([start_link/0, start_pool/4, init/1]).
 
 %%%%%%%%%%%%%%%%
 %% public api %%
@@ -10,10 +10,10 @@
 
 start_link() -> supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_pool(PoolId, Host, Port) ->
+start_pool(PoolId, Host, Port, Size) ->
 	% emongo_server_sup instances are added dynamically, one for each pool
 	supervisor:start_child(?MODULE, {PoolId,
-		{emongo_server_sup, start_link, [PoolId, Host, Port]},
+		{emongo_server_sup, start_link, [PoolId, Host, Port, Size]},
 		permanent, infinity, supervisor, [emongo_server_sup]
 	}).
 

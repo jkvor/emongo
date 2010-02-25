@@ -273,9 +273,8 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 				size=Size
 			},
 
-			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port),
-			Pool1 = do_open_connections(Pool),
-			{reply, ok, State#state{pools=[{PoolId, Pool1}|Pools]}}
+			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port, Size),
+			{reply, ok, State#state{pools=[{PoolId, Pool}|Pools]}}
 	end;
 
 handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
@@ -351,13 +350,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
-do_open_connections(#pool{size=Size}=Pool) ->
-	% each connection is an emongo_server supervised by simple_one_for_one
-	% emongo_server_sup supervisor
-	F = fun(_) -> {ok, _} = emongo_server_sup:start_child(Pool#pool.id) end,
-	lists:foreach(F, lists:seq(1, Size)),
-	Pool.
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).
