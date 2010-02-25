@@ -7,17 +7,5 @@
 	]},
 	{registered, [emongo_sup, emongo]},
 	{mod, {emongo_app, []}},
-	{applications, [kernel, stdlib]},
-	{env, [
-		{pools, [
-			% NOTE: PoolId will be a locally registered name & therefore
-			% cannot conflict with other registered names
-			{emongo_pool, [
-				{size, 1},
-				{host, "localhost"},
-				{port, 27017},
-				{database, "test"}
-			]}
-		]}
-	]}
+	{applications, [kernel, stdlib]}
 ]}.
