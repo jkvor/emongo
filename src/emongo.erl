@@ -253,7 +253,9 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 	{Result, Pools1} = 
 		case proplists:is_defined(PoolId, Pools) of
 			true ->
-				{{error, pool_already_exists}, Pools};
+                Pool = proplists:get_value(PoolId, Pools),
+                Pool1 = do_open_connections(Pool),
+                {ok, [{PoolId, Pool1}|proplists:delete(PoolId, Pools)]};
 			false ->
 				Pool = #pool{
 					id=PoolId,
@@ -308,8 +310,12 @@ handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
 			{Pool, Others} ->
 				Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
 				Pool1 = Pool#pool{conn_pids = Pids1},
-				Pool2 = do_open_connections(Pool1),
-				Pools1 = [{PoolId, Pool2}|Others],
+                case do_open_connections(Pool1) of
+                    {error, _Reason} ->
+                        Pools1 = Others;
+                    Pool2 ->
+                        Pools1 = [{PoolId, Pool2}|Others]
+                end,
 				State#state{pools=Pools1}
 		end,
 	{noreply, State1};
@@ -357,8 +363,12 @@ initialize_pools() ->
 do_open_connections(#pool{conn_pids=Pids, size=Size}=Pool) -> 
 	case queue:len(Pids) < Size of
 		true ->
-			Pid = emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port),
-			do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)});
+            case emongo_conn:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port) of
+                {error, Reason} ->
+                    {error, Reason};
+                Pid ->
+                    do_open_connections(Pool#pool{conn_pids = queue:in(Pid, Pids)})
+            end;
 		false ->
 			Pool
 	end.
