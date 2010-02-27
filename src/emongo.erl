@@ -75,7 +75,7 @@ find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 
 %% this function has been deprecated
 find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT).
 
@@ -96,7 +96,7 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
 find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Query = create_query(Options, Selector),
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
@@ -157,7 +157,7 @@ get_more(PoolId, Collection, CursorID, Timeout) ->
 	get_more(PoolId, Collection, CursorID, 0, Timeout).
 
 get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:get_more(Pool#pool.database, Collection, Pool#pool.req_id, NumToReturn, CursorID),
 	emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, Timeout).
 
@@ -165,7 +165,7 @@ kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
 	kill_cursors(PoolId, [CursorID]);
 
 kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:kill_cursors(Pool#pool.req_id, CursorIDs),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
@@ -176,7 +176,7 @@ insert(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
 	insert(PoolId, Collection, [Document]);
 
 insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Documents),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
@@ -187,7 +187,7 @@ update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_
 	update(PoolId, Collection, Selector, Document, false).
 
 update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:update(Pool#pool.database, Collection, Pool#pool.req_id, Upsert, Selector, Document),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
@@ -198,7 +198,7 @@ delete(PoolId, Collection) ->
 	delete(PoolId, Collection, []).
 
 delete(PoolId, Collection, Selector) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:delete(Pool#pool.database, Collection, Pool#pool.req_id, transform_selector(Selector)),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
@@ -206,12 +206,12 @@ delete(PoolId, Collection, Selector) ->
 %% ensure index
 %%------------------------------------------------------------------------------
 ensure_index(PoolId, Collection, Keys) when ?IS_DOCUMENT(Keys)->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:ensure_index(Pool#pool.database, Collection, Pool#pool.req_id, Keys),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
 count(PoolId, Collection) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	{Pid, Pool} = get_pid_pool(PoolId),
 	Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}], limit=1},
 	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
 	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
@@ -273,7 +273,8 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 				size=Size
 			},
 
-			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port, Size),
+			{ok, PoolPid} = emongo_sup:start_pool(PoolId, Host, Port),
+			emongo_server_sup:start_children(PoolPid, Size, undefined),
 			{reply, ok, State#state{pools=[{PoolId, Pool}|Pools]}}
 	end;
 
@@ -312,21 +313,6 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-%handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
-	%io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
-	%State1 =
-		%case get_pool(PoolId, Pools) of
-			%undefined ->
-				%State;
-			%{Pool, Others} ->
-				%Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
-				%Pool1 = Pool#pool{conn_pids = Pids1},
-				%Pool2 = do_open_connections(Pool1),
-				%Pools1 = [{PoolId, Pool2}|Others],
-				%State#state{pools=Pools1}
-		%end,
-	%{noreply, State1};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -350,6 +336,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+get_pid_pool(PoolId) ->
+    {PidOrErr, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+    {ok, Pid} = PidOrErr,
+    {Pid, Pool}.
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).
