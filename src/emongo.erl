@@ -261,10 +261,8 @@ handle_call(oid, _From, State) ->
 	{reply, <<Front:32, (State#state.hashed_hostn)/binary, PID/binary, Index:24>>, State#state{oid_index = State#state.oid_index + 1}};
 
 handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=Pools}=State) ->
-	case proplists:is_defined(PoolId, Pools) of
-		true ->
-			{reply, {error, pool_already_exists}, State};
-		false ->
+	case proplists:get_value(PoolId, Pools) of
+		undefined ->
 			Pool = #pool{
 				id=PoolId,
 				host=Host,
@@ -272,11 +270,15 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 				database=Database,
 				size=Size
 			},
-
 			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port),
 			Pool1 = do_open_connections(Pool),
-			{reply, ok, State#state{pools=[{PoolId, Pool1}|Pools]}}
-	end;
+			Pools1 = [{PoolId, Pool1} | Pools];
+		Pool ->
+			Pool1 = do_open_connections(Pool),
+			Pools1 = [{PoolId, Pool1} | proplists:delete(PoolId, Pools)]
+	end,
+	
+	{reply, ok, State#state{pools=Pools1}};
 
 handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
 	case lists:keytake(PoolId, 1, Pools) of
