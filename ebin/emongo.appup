@@ -1,4 +1,8 @@
-{"0.0.4", [
+{"0.0.5", [
+	{"0.0.4", [
+		{load_module, emongo_bson},
+		{load_module, emongo}
+	]},
 	{"0.0.3", [{add_module, emongo_collection}]},
 	{"0.0.2", [
 		{load_module, emongo},
@@ -11,6 +15,10 @@
 		{apply, {emongo_app, initialize_pools, []}}
 	]}
 ], [
+	{"0.0.4", [
+		{load_module, emongo_bson},
+		{load_module, emongo}
+	]},
 	{"0.0.3", [{delete_module, emongo_collection}]},
 	{"0.0.2", [
 		{load_module, emongo},

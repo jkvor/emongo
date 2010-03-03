@@ -270,7 +270,7 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 				database=Database,
 				size=Size
 			},
-			{ok, _SupPid} = emongo_sup:start_pool(PoolId, Host, Port),
+			emongo_sup:start_pool(PoolId, Host, Port),
 			Pool1 = do_open_connections(Pool),
 			Pools1 = [{PoolId, Pool1} | Pools];
 		Pool ->
@@ -280,6 +280,26 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 	
 	{reply, ok, State#state{pools=Pools1}};
 
+handle_call({pid, PoolId1}, From, #state{pools=[]}=State) ->
+	F = fun({PoolId, Props}, State1) ->
+			Host = proplists:get_value(host, Props, "localhost"),
+			Port = proplists:get_value(port, Props, 27017),
+			Database = proplists:get_value(database, Props, "test"),
+			Size = proplists:get_value(size, Props, 1),
+			Req = {add_pool, PoolId, Host, Port, Database, Size},
+			{reply, ok, State2} = handle_call(Req, From, State1),
+			State2
+		end,
+	
+	case application:get_env(emongo, pools) of
+		undefined ->
+			{reply, {undefined, undefined}, State};
+		{ok, []} ->
+			{reply, {undefined, undefined}, State};
+		{ok, Pools} ->
+			NewState = lists:foldl(F, State, Pools),
+			handle_call({pid, PoolId1}, From, NewState)
+	end;
 handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
 	case lists:keytake(PoolId, 1, Pools) of
 		false ->
@@ -315,20 +335,14 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-%handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
-	%io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
-	%State1 =
-		%case get_pool(PoolId, Pools) of
-			%undefined ->
-				%State;
-			%{Pool, Others} ->
-				%Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
-				%Pool1 = Pool#pool{conn_pids = Pids1},
-				%Pool2 = do_open_connections(Pool1),
-				%Pools1 = [{PoolId, Pool2}|Others],
-				%State#state{pools=Pools1}
-		%end,
-	%{noreply, State1};
+handle_info({'EXIT', _Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
+	case lists:keytake(PoolId, 1, Pools) of
+		false ->
+			{noreply, State};
+		{value, {PoolId, Pool}, Others} ->
+			Pool1 = do_open_connections(Pool),
+			{noreply, State#state{pools=[{PoolId, Pool1} | Others]}}
+	end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -357,8 +371,13 @@ code_change(_OldVsn, State, _Extra) ->
 do_open_connections(#pool{size=Size}=Pool) ->
 	% each connection is an emongo_server supervised by simple_one_for_one
 	% emongo_server_sup supervisor
-	F = fun(_) -> {ok, _} = emongo_server_sup:start_child(Pool#pool.id) end,
-	lists:foreach(F, lists:seq(1, Size)),
+	F = fun(_) -> catch emongo_server_sup:start_child(Pool#pool.id) end,
+	
+	case Size - emongo_server_sup:child_count(Pool#pool.id) of
+		I when I < 1 -> ok;
+		I -> lists:foreach(F, lists:seq(1, I))
+	end,
+	
 	Pool.
 
 dec2hex(Dec) ->
