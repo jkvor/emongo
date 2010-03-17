@@ -26,7 +26,7 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, oid/0, add_pool/5, find/2, find/3, find/4,
+-export([pools/0, oid/0, oid_generation_time/1, add_pool/5, find/2, find/3, find/4,
 		 find_all/2, find_all/3, find_all/4, get_more/4,
 		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
@@ -60,7 +60,13 @@ pools() ->
 	
 oid() ->
 	gen_server:call(?MODULE, oid, infinity).
-	
+
+oid_generation_time({oid, Oid}) ->
+    oid_generation_time(Oid);	
+oid_generation_time(Oid) when is_binary(Oid) andalso size(Oid) =:= 12 ->
+    <<UnixTime:32/signed, _/binary>> = Oid,
+    UnixTime.
+
 add_pool(PoolId, Host, Port, Database, Size) ->
 	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
 
@@ -243,11 +249,11 @@ handle_call(pools, _From, State) ->
 	{reply, State#state.pools, State};
 	
 handle_call(oid, _From, State) ->
-	{Total_Wallclock_Time, _} = erlang:statistics(wall_clock),
-	Front = Total_Wallclock_Time rem 16#ffffffff,
+    {MegaSecs, Secs, _} = now(),
+    UnixTime = MegaSecs * 1000000 + Secs,
 	<<_:20/binary,PID:2/binary,_/binary>> = term_to_binary(self()),
 	Index = State#state.oid_index rem 16#ffffff,
-	{reply, <<Front:32, (State#state.hashed_hostn)/binary, PID/binary, Index:24>>, State#state{oid_index = State#state.oid_index + 1}};
+	{reply, <<UnixTime:32/signed, (State#state.hashed_hostn)/binary, PID/binary, Index:24>>, State#state{oid_index = State#state.oid_index + 1}};
 	
 handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=Pools}=State) ->
 	{Result, Pools1} = 
