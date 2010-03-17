@@ -26,9 +26,9 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, oid/0, oid_generation_time/1, add_pool/5, find/2, find/3, find/4,
-		 find_all/2, find_all/3, find_all/4, get_more/4,
-		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
+-export([pools/0, oid/0, oid_generation_time/1, add_pool/5, auth/3,
+         find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
+         get_more/4, get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
 		 ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
 
@@ -69,6 +69,57 @@ oid_generation_time(Oid) when is_binary(Oid) andalso size(Oid) =:= 12 ->
 
 add_pool(PoolId, Host, Port, Database, Size) ->
 	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
+
+%%------------------------------------------------------------------------------
+%% authenticate
+%%------------------------------------------------------------------------------
+auth(PoolId, User, Pass) ->
+    % Authentication is a two step process. First be must run getnonce command to get
+    % nonce that we are going to use in step two. We need to authenticate also every
+    % connection.
+    Pools = pools(),
+    {Pool, _} = get_pool(PoolId, Pools),
+    PoolPids = queue:to_list(Pool#pool.conn_pids),
+    
+    F = fun(Pid) ->
+        case getnonce(Pid, Pool) of
+            error ->
+                throw(getnonce);
+            Nonce ->
+                do_auth(Nonce, Pid, Pool, User, Pass)
+        end
+    end,
+    lists:foreach(F, PoolPids).
+
+do_auth(Nonce, Pid, Pool, User, Pass) ->
+    Hash = emongo:dec2hex(crypto:md5(User ++ ":mongo:" ++ Pass)),
+    Digest = emongo:dec2hex(crypto:md5(binary_to_list(Nonce) ++ User ++ Hash)),
+    Query = #emo_query{q=[{<<"authenticate">>, 1}, {<<"user">>, User}, {<<"nonce">>, Nonce}, {<<"key">>, Digest}], limit=1},
+    Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
+
+    Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT),
+    case lists:nth(1, Resp#response.documents) of
+        [{<<"ok">>, 1.0}] ->
+            {ok, authenticated};
+        L ->
+            case lists:keyfind(<<"errmsg">>, 1, L) of
+                false ->
+                    throw(no_error_message);
+                {<<"errmsg">>, Error} ->
+                    throw(Error)
+            end
+    end.
+
+getnonce(Pid, Pool) ->
+    Query1 = #emo_query{q=[{<<"getnonce">>, 1}], limit=1},
+    Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query1),
+	Resp1 = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT),
+	case lists:keyfind(<<"nonce">>, 1, lists:nth(1, Resp1#response.documents)) of
+	    false ->
+	        error;
+	    {<<"nonce">>, Nonce} ->
+	        Nonce
+	end.
 
 %%------------------------------------------------------------------------------
 %% find
