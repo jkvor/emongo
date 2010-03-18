@@ -92,8 +92,8 @@ auth(PoolId, User, Pass) ->
     lists:foreach(F, PoolPids).
 
 do_auth(Nonce, Pid, Pool, User, Pass) ->
-    Hash = emongo:dec2hex(crypto:md5(User ++ ":mongo:" ++ Pass)),
-    Digest = emongo:dec2hex(crypto:md5(binary_to_list(Nonce) ++ User ++ Hash)),
+    Hash = emongo:dec2hex(erlang:md5(User ++ ":mongo:" ++ Pass)),
+    Digest = emongo:dec2hex(erlang:md5(binary_to_list(Nonce) ++ User ++ Hash)),
     Query = #emo_query{q=[{<<"authenticate">>, 1}, {<<"user">>, User}, {<<"nonce">>, Nonce}, {<<"key">>, Digest}], limit=1},
     Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
 

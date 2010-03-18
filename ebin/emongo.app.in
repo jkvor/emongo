@@ -12,6 +12,6 @@ ${MODULES}
     ]},
     {registered, []},
     {mod, {emongo_app, []}},
-    {applications, [kernel, stdlib, crypto]}
+    {applications, [kernel, stdlib]}
 ]}.
 EOF
