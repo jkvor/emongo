@@ -22,7 +22,7 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_conn).
 
--export([start_link/3, init/4, send/3, send_recv/4]).
+-export([start_link/3, init/4, send/3, send_sync/5, send_recv/4]).
 
 -record(request, {req_id, requestor}).
 -record(state, {pool_id, socket, requests}).
@@ -41,6 +41,20 @@ send(Pid, ReqID, Packet) ->
 	case gen:call(Pid, '$emongo_conn_send', {ReqID, Packet}) of
 		{ok, Result} -> Result;
 		{error, Reason} -> exit(Reason)
+	end.
+
+send_sync(Pid, ReqID, Packet1, Packet2, Timeout) ->
+    try
+        {ok, Resp} = gen:call(Pid, '$emongo_conn_send_sync', {ReqID, Packet1, Packet2}, Timeout),
+		Documents = emongo_bson:decode(Resp#response.documents),
+		Resp#response{documents=Documents}
+    catch 
+        exit:timeout->
+            %Clear the state from the timed out call
+            gen:call(Pid, '$emongo_recv_timeout', ReqID, Timeout),
+			#response{documents=[]};
+        exit:ExitReason ->
+            exit(ExitReason)
 	end.
 	
 send_recv(Pid, ReqID, Packet, Timeout) ->
@@ -64,6 +78,12 @@ loop(State, Leftover) ->
 			gen_tcp:send(Socket, Packet),
 			gen:reply({From, Mref}, ok),
 			loop(State, Leftover);
+		{'$emongo_conn_send_sync', {From, Mref}, {ReqID, Packet1, Packet2}} ->
+			gen_tcp:send(Socket, Packet1),
+			gen_tcp:send(Socket, Packet2), % This is the packet containing getlasterror
+			Request = #request{req_id=ReqID, requestor={From, Mref}},
+			State1 = State#state{requests=[{ReqID, Request}|State#state.requests]},
+			loop(State1, Leftover);
 		{'$emongo_conn_send_recv', {From, Mref}, {ReqID, Packet}} -> 
 			gen_tcp:send(Socket, Packet),
 			Request = #request{req_id=ReqID, requestor={From, Mref}},
