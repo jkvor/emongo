@@ -26,7 +26,7 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, oid/0, add_pool/5, find/2, find/3, find/4,
+-export([pools/0, oid/0, add_pool/5, del_pool/1, find/2, find/3, find/4,
 		 find_all/2, find_all/3, find_all/4, get_more/4,
 		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
@@ -34,7 +34,7 @@
 
 -include("emongo.hrl").
 
--record(state, {pools, oid_index, hashed_hostn}).
+-record(state, {oid_index, hashed_hostn}).
 
 %%====================================================================
 %% Types
@@ -56,13 +56,16 @@ start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 pools() ->
-	gen_server:call(?MODULE, pools, infinity).
+    emongo_sup:pools().
 
 oid() ->
 	gen_server:call(?MODULE, oid, infinity).
 
 add_pool(PoolId, Host, Port, Database, Size) ->
-	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
+    emongo_sup:start_pool(PoolId, Host, Port, Database, Size).
+
+del_pool(PoolId) ->
+    emongo_sup:stop_pool(PoolId).
 
 %%------------------------------------------------------------------------------
 %% find
@@ -235,11 +238,9 @@ count(PoolId, Collection) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init(_) ->
-	process_flag(trap_exit, true),
-	%Pools = initialize_pools(),
 	{ok, HN} = inet:gethostname(),
 	<<HashedHN:3/binary,_/binary>> = erlang:md5(HN),
-	{ok, #state{pools=[], oid_index=1, hashed_hostn=HashedHN}}.
+	{ok, #state{oid_index=1, hashed_hostn=HashedHN}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -250,51 +251,12 @@ init(_) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(pools, _From, State) ->
-	{reply, State#state.pools, State};
-
 handle_call(oid, _From, State) ->
 	{Total_Wallclock_Time, _} = erlang:statistics(wall_clock),
 	Front = Total_Wallclock_Time rem 16#ffffffff,
 	<<_:20/binary,PID:2/binary,_/binary>> = term_to_binary(self()),
 	Index = State#state.oid_index rem 16#ffffff,
 	{reply, <<Front:32, (State#state.hashed_hostn)/binary, PID/binary, Index:24>>, State#state{oid_index = State#state.oid_index + 1}};
-
-handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=Pools}=State) ->
-	case proplists:is_defined(PoolId, Pools) of
-		true ->
-			{reply, {error, pool_already_exists}, State};
-		false ->
-			Pool = #pool{
-				id=PoolId,
-				host=Host,
-				port=Port,
-				database=Database,
-				size=Size
-			},
-
-			{ok, PoolPid} = emongo_sup:start_pool(PoolId, Host, Port),
-			emongo_server_sup:start_children(PoolPid, Size, undefined),
-			{reply, ok, State#state{pools=[{PoolId, Pool}|Pools]}}
-	end;
-
-handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
-	case lists:keytake(PoolId, 1, Pools) of
-		false ->
-			{reply, {undefined, undefined}, State};
-		{value, {PoolId, Pool}, Others} ->
-			N = Pool#pool.conn_pid,
-			Pid = emongo_server_sup:nth_child_pid(Pool#pool.id, N),
-			
-			if
-				N < Pool#pool.size -> N1 = N + 1;
-				true -> N1 = 1
-			end,
-			
-			Pool1 = Pool#pool{conn_pid=N1, req_id=(Pool#pool.req_id)+1},
-			Pools1 = [{PoolId, Pool1} | Others],
-			{reply, {Pid, Pool}, State#state{pools=Pools1}}
-	end;
 
 handle_call(_, _From, State) -> {reply, {error, invalid_call}, State}.
 
@@ -337,9 +299,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 get_pid_pool(PoolId) ->
-    {PidOrErr, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-    {ok, Pid} = PidOrErr,
-    {Pid, Pool}.
+    PoolPid = emongo_sup:pool_pid(PoolId),
+    gen_server:call(PoolPid, pid, infinity).
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).

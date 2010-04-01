@@ -1,4 +1,4 @@
--record(pool, {id, host, port, database, size=1, conn_pid=1, req_id=1}).
+-record(pool, {id, host, port, database, size, conn_pid=queue:new(), req_id=1}).
 -record(header, {message_length, request_id, response_to, op_code}).
 -record(response, {header, response_flag, cursor_id, offset, limit, documents}).
 -record(emo_query, {opts=[], offset=0, limit=0, q=[], field_selector=[]}).
