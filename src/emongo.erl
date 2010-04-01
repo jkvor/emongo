@@ -26,8 +26,8 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, oid/0, oid_generation_time/1, add_pool/5, auth/3,
-         find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
+-export([pools/0, oid/0, oid_generation_time/1, add_pool/5, remove_pool/1,
+         auth/3, find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
          get_more/4, get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, update_sync/4, update_sync/5,
 		 delete/2, delete/3, ensure_index/3, count/2, dec2hex/1,
@@ -70,6 +70,9 @@ oid_generation_time(Oid) when is_binary(Oid) andalso size(Oid) =:= 12 ->
 
 add_pool(PoolId, Host, Port, Database, Size) ->
 	gen_server:call(?MODULE, {add_pool, PoolId, Host, Port, Database, Size}, infinity).
+	
+remove_pool(PoolId) ->
+    gen_server:call(?MODULE, {remove_pool, PoolId}).
 
 %%------------------------------------------------------------------------------
 %% authenticate
@@ -348,6 +351,16 @@ handle_call({add_pool, PoolId, Host, Port, Database, Size}, _From, #state{pools=
 		end,
 	{reply, Result, State#state{pools=Pools1}};
 	
+handle_call({remove_pool, PoolId}, _From, #state{pools=Pools}=State) ->
+    {Result, Pools1} = 
+        case proplists:is_defined(PoolId, Pools) of
+            true ->
+                {ok, lists:keydelete(PoolId, 1, Pools)};
+            false ->
+                {not_found, Pools}
+        end,
+    {reply, Result, State#state{pools=Pools1}};
+    
 handle_call({pid, PoolId}, _From, #state{pools=Pools}=State) ->
 	case get_pool(PoolId, Pools) of
 		undefined ->
