@@ -70,10 +70,10 @@ handle_info({tcp, _Socket, Data}, State) ->
 					{noreply, State#state{requests=Requests, leftover=Tail}}
 			end
 	end;
-handle_info({tcp_closed, _Socket}, State) ->
-	exit({State#state.pool_id, tcp_closed});
-handle_info({tcp_error, _Socket, Reason}, State) ->
-	exit({State#state.pool_id, Reason}).
+handle_info({tcp_closed, _Socket}, _State) ->
+	exit(tcp_closed);
+handle_info({tcp_error, _Socket, Reason}, _State) ->
+	exit({tcp_error, Reason}).
 
 terminate(_, State) -> gen_tcp:close(State#state.socket).
 

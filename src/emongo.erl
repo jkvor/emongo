@@ -299,8 +299,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 get_pid_pool(PoolId) ->
-    PoolPid = emongo_sup:pool_pid(PoolId),
-    gen_server:call(PoolPid, pid, infinity).
+    emongo_sup:worker_pid(PoolId).
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).

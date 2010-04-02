@@ -2,7 +2,8 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_pool/5, stop_pool/1, pools/0, pool_pid/1]).
+-export([start_link/0, start_pool/5, stop_pool/1, pools/0, worker_pid/1]).
+-export([start_balancer/2, stop_balancer/1]).
 
 %% supervisor exports
 -export([init/1]).
@@ -12,6 +13,21 @@
 %%%%%%%%%%%%%%%%
 
 start_link() -> supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+start_balancer(BalId, Pools) ->
+    supervisor:start_child(?MODULE,
+                           {BalId,
+                            {emongo_balancer, start_link, [BalId, Pools]},
+                            permanent, 10000, worker, [emongo_balancer]
+                           }).
+
+stop_balancer(BalId) ->
+    case [Pid || {PoolId, Pid, _, [emongo_balancer]} <- supervisor:which_children(?MODULE), PoolId =:= BalId] of
+        [Pid] ->
+            gen_server:call(Pid, stop_children),
+            stop_pool(BalId)
+    end.
+
 
 start_pool(PoolId, Host, Port, Database, Size) ->
     supervisor:start_child(?MODULE, {PoolId,
@@ -26,10 +42,10 @@ stop_pool(PoolId) ->
 pools() ->
     [{PoolId, Pid} || {PoolId, Pid, _, [emongo_pool]} <- supervisor:which_children(?MODULE)].
 
-pool_pid(PoolId) ->
-    case [Pid || {Id, Pid, _, [emongo_pool]} <- supervisor:which_children(?MODULE), Id =:= PoolId] of
-        [Pid] ->
-            Pid;
+worker_pid(PoolId) ->
+    case [{Pid, Module} || {Id, Pid, _, [Module]} <- supervisor:which_children(?MODULE), Id =:= PoolId] of
+        [{Pid, Module}] ->
+            Module:pid(Pid);
         _ ->
             undefined
     end.

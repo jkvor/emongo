@@ -6,7 +6,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5]).
+-export([start_link/5, pid/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -21,6 +21,9 @@
 
 start_link(PoolId, Host, Port, Database, Size) ->
     gen_server:start_link(?MODULE, [PoolId, Host, Port, Database, Size], []).
+
+pid(Pid) ->
+    gen_server:call(Pid, pid, infinity).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %% gen_server callbacks %%
@@ -54,8 +57,6 @@ init([PoolId, Host, Port, Database, Size]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(state, _From, State) ->
-    {reply, State, State};
 handle_call(pid, _From, #pool{conn_pid=Pids, req_id=ReqId}=State) ->
     case queue:out(Pids) of
         {{value, Pid}, Q2} ->
@@ -82,11 +83,21 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #pool{conn_pid=Pids}=State) ->
-    Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
-    
-    NewState = do_open_connections(State#pool{conn_pid = Pids1}),
-    {noreply, NewState};
+handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
+    case case Reason of
+             tcp_closed -> true;
+             {tcp_error, _Reason} -> true;
+             _ -> false
+         end
+        of
+        true ->
+            Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
+
+            NewState = do_open_connections(State#pool{conn_pid = Pids1}),
+            {noreply, NewState};
+        _ ->
+            {noreply, State}
+    end;
 
 handle_info(reconnect, State) ->
     NewState = do_open_connections(State),
