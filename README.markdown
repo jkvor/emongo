@@ -1,9 +1,8 @@
 #### The goal of emongo is to be stable, fast and easy to use.
 
-## Compile and install
+## Build
 
 	make
-	sudo make install
 	
 ## Start emongo
 
