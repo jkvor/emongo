@@ -42,7 +42,7 @@ init([PoolId, Host, Port, Database, Size]) ->
     Pool = #pool{id = PoolId,
                  host = Host,
                  port = Port,
-                 database = Database,
+                 database = unicode:characters_to_binary(Database),
                  size = Size
                 },
     NewPool = do_open_connections(Pool),
