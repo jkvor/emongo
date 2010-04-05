@@ -24,10 +24,19 @@
 
 -export([update/6, insert/4, do_query/4, get_more/5, 
 		 delete/4, kill_cursors/2, msg/2, decode_response/1,
-		 ensure_index/4]).
+		 ensure_index/4, get_last_error/2]).
 
 -include("emongo.hrl").
-	
+
+get_last_error(Database, ReqId) ->
+    %%Query = #emo_query{q=[{<<"getlasterror">>, 1}], limit=1},
+    %%do_query(Database, "$cmd", ReqId, Query).
+    DatabaseLength = byte_size(Database),
+    <<(57+DatabaseLength):32/little-signed, ReqId:32/little-signed, 0:32,
+     ?OP_QUERY:32/little-signed, 0:32, Database/binary, ".$cmd", 0, 0:32, 1:32/little-signed,
+     %% Encoded document
+     23:32/little-signed, 16, "getlasterror", 0, 1:32/little-signed, 0>>.
+
 update(Database, Collection, ReqID, Upsert, Selector, Document) ->
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
 	EncodedSelector = emongo_bson:encode(Selector),

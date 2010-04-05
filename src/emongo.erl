@@ -32,6 +32,8 @@
 		 insert/3, update/4, update/5, delete/2, delete/3,
 		 ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
 
+-export([update_sync/5]).
+
 -include("emongo.hrl").
 
 -record(state, {oid_index, hashed_hostn}).
@@ -193,6 +195,20 @@ update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selecto
 	{Pid, Pool} = get_pid_pool(PoolId),
 	Packet = emongo_packet:update(Pool#pool.database, Collection, Pool#pool.req_id, Upsert, Selector, Document),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
+
+update_sync(PoolId, Collection, Selector, Document, Upsert) ->
+    {Pid, #pool{database=Database, req_id=ReqId}} = get_pid_pool(PoolId),
+    Packet1 = emongo_packet:update(Database, Collection, ReqId, Upsert, Selector, Document),
+    Packet2 = emongo_packet:get_last_error(Database, ReqId),
+    Resp = emongo_server:send_recv(Pid, ReqId, [Packet1, Packet2], ?TIMEOUT),
+    case lists:keysearch(<<"updatedExisting">>, 1, lists:nth(1, Resp#response.documents)) of
+        false ->
+            undefined;
+        {value, {<<"updatedExisting">>, true}} ->
+            ok;
+        {value, {<<"updatedExisting">>, false}} ->
+            {error, not_updated}
+    end.
 
 %%------------------------------------------------------------------------------
 %% delete
