@@ -27,7 +27,7 @@ send_recv(Pid, ReqID, Packet, Timeout) ->
 	end.
 
 open_socket(Host, Port) ->
-	case gen_tcp:connect(Host, Port, [binary, {active, true}, {nodelay, true}]) of
+	case gen_tcp:connect(Host, Port, [binary, {active, true}, {nodelay, true}], ?TIMEOUT) of
 		{ok, Sock} ->
 			Sock;
 		{error, Reason} ->

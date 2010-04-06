@@ -89,21 +89,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
-    case case Reason of
-             tcp_closed -> true;
-             {tcp_error, _Reason} -> true;
-             _ -> false
-         end
-        of
-        true ->
-            Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
-
-            NewState = do_open_connections(State#pool{conn_pid = Pids1}),
-            {noreply, NewState};
-        _ ->
-            {noreply, State}
-    end;
+handle_info({'EXIT', Pid, _Reason}, #pool{conn_pid=Pids}=State) ->
+    Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
+    {noreply, State#pool{conn_pid = Pids1, active=false}};
 
 handle_info(poll, State) ->
     erlang:send_after(?POLL_TIME, self(), poll),
@@ -160,7 +148,7 @@ do_poll(Pool) ->
     case get_pid(Pool) of
         {{Pid, Database, ReqId}, NewPool} ->
             PacketLast = emongo_packet:get_last_error(Database, ReqId),
-            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, ?TIMEOUT) of
+            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, 500) of
                 {'EXIT', _} ->
                     NewPool#pool{active=false};
                 _ ->
