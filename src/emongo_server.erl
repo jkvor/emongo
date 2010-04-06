@@ -15,10 +15,7 @@ start_link(PoolId, Host, Port) ->
 	gen_server:start_link(?MODULE, [PoolId, Host, Port], []).
 
 send(Pid, ReqID, Packet) ->
-	case gen_server:cast(Pid, {send, ReqID, Packet}) of
-		ok -> ok;
-		{error, Reason} -> exit(Reason)
-	end.
+    gen_server:cast(Pid, {send, ReqID, Packet}).
 
 send_recv(Pid, ReqID, Packet, Timeout) ->
 	case gen_server:call(Pid, {send_recv, ReqID, Packet}, Timeout) of
