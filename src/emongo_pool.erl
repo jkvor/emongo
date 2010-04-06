@@ -13,7 +13,17 @@
          terminate/2, code_change/3]).
 
 -include("emongo.hrl").
--define(RECONNECT_TIME, 10000).
+
+-define(POLL_TIME, 10000).
+
+-record(pool, {id,
+               host,
+               port,
+               database,
+               size,
+               active=false,
+               conn_pid=queue:new(),
+               req_id=1}).
 
 %%%%%%%%%%%%%%%%
 %% public api %%
@@ -39,14 +49,15 @@ pid(Pid) ->
 init([PoolId, Host, Port, Database, Size]) ->
     process_flag(trap_exit, true),
     
-    Pool = #pool{id = PoolId,
+    Pool0 = #pool{id = PoolId,
                  host = Host,
                  port = Port,
                  database = unicode:characters_to_binary(Database),
                  size = Size
                 },
-    NewPool = do_open_connections(Pool),
-    {ok, NewPool}.
+    
+    {noreply, Pool} = handle_info(poll, Pool0),
+    {ok, Pool}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -57,14 +68,9 @@ init([PoolId, Host, Port, Database, Size]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(pid, _From, #pool{conn_pid=Pids, req_id=ReqId}=State) ->
-    case queue:out(Pids) of
-        {{value, Pid}, Q2} ->
-            NewState = State#pool{conn_pid=queue:in(Pid, Q2), req_id=(ReqId + 1)},
-            {reply, {Pid, State}, NewState};
-        {empty, _} ->
-            {reply, undefined, State}
-    end;
+handle_call(pid, _From, #pool{active=true}=State) ->
+    {Reply, NewState} = get_pid(State),
+    {reply, Reply, NewState};
 handle_call(_Request, _From, State) ->
     {reply, undefined, State}.
 
@@ -99,7 +105,8 @@ handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
             {noreply, State}
     end;
 
-handle_info(reconnect, State) ->
+handle_info(poll, State) ->
+    erlang:send_after(?POLL_TIME, self(), poll),
     NewState = do_open_connections(State),
     {noreply, NewState};
 
@@ -127,16 +134,38 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+get_pid(#pool{database=Database, conn_pid=Pids, req_id=ReqId}=State) ->
+    case queue:out(Pids) of
+        {{value, Pid}, Q2} ->
+            NewState = State#pool{conn_pid=queue:in(Pid, Q2), req_id=(ReqId + 1)},
+            {{Pid, Database, ReqId}, NewState};
+        {empty, _} ->
+            {undefined, State}
+    end.
+
 do_open_connections(#pool{conn_pid=Pids, size=Size}=Pool) -> 
     case queue:len(Pids) < Size of
         true ->
             case emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port) of
                 {error, _Reason} ->
-                    erlang:send_after(?RECONNECT_TIME, self(), reconnect),
-                    Pool;
+                    Pool#pool{active=false};
                 {ok, Pid} ->
                     do_open_connections(Pool#pool{conn_pid = queue:in(Pid, Pids)})
             end;
         false ->
-            Pool
+            do_poll(Pool)
+    end.
+
+do_poll(Pool) ->
+    case get_pid(Pool) of
+        {{Pid, Database, ReqId}, NewPool} ->
+            PacketLast = emongo_packet:get_last_error(Database, ReqId),
+            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, ?TIMEOUT) of
+                {'EXIT', _} ->
+                    NewPool#pool{active=false};
+                _ ->
+                    NewPool#pool{active=true}
+            end;
+        _ ->
+            Pool#pool{active=false}
     end.
