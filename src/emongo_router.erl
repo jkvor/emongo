@@ -61,7 +61,7 @@ init([BalId, Pools]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messagesp
 %%--------------------------------------------------------------------
-handle_call(pid, From, #state{id=BalId, active=Active, passive=Passive, timer=Timer}=State) ->
+handle_call(pid, _From, State) ->
     {Pid, NewState} = get_pid(State, emongo_sup:pools()),
     {reply, Pid, NewState};
 
@@ -109,7 +109,7 @@ handle_info({init, Pools}, #state{id=BalId, active=Active}=State) ->
     {noreply, State#state{active=lists:sort(PoolList)}};
 
 handle_info(recheck, State) ->
-    {noreply, activate(State, [])};
+    {noreply, activate(State, [], emongo_sup:pools())};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -160,17 +160,17 @@ set_timer(TimerRef) ->
     TimerRef.
 
 
-activate(#state{passive=[], timer=_TimerRef}=State, []) ->
+activate(#state{passive=[], timer=_TimerRef}=State, [], _) ->
     State#state{timer=undefined};
 
-activate(#state{passive=[]}=State, Passive) ->
+activate(#state{passive=[]}=State, Passive, _) ->
     State#state{passive=Passive, timer=erlang:send_after(?RECHECK_TIME, self(), recheck)};
 
-activate(#state{id=BalId, active=Active, passive=[PoolIdx | Passive]}=State, Acc) ->
-    case emongo_sup:worker_pid(?POOL_ID(BalId, PoolIdx)) of
+activate(#state{id=BalId, active=Active, passive=[PoolIdx | Passive]}=State, Acc, Pools) ->
+    case emongo_sup:worker_pid(?POOL_ID(BalId, PoolIdx), Pools) of
         undefined ->
-            activate(State#state{passive=Passive}, [PoolIdx | Acc]);
+            activate(State#state{passive=Passive}, [PoolIdx | Acc], Pools);
         _ ->
             error_logger:info_msg("pool ~p is enabled!~n", [?POOL_ID(BalId, PoolIdx)]),
-            activate(State#state{active=lists:umerge([PoolIdx], Active), passive=Passive}, Acc)
+            activate(State#state{active=lists:umerge([PoolIdx], Active), passive=Passive}, Acc, Pools)
     end.

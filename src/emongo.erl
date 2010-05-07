@@ -310,7 +310,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 get_pid_pool(PoolId) ->
-    emongo_sup:worker_pid(PoolId).
+    emongo_sup:worker_pid(PoolId, emongo_sup:pools()).
 
 dec2hex(Dec) ->
 	dec2hex(<<>>, Dec).

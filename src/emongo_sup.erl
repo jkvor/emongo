@@ -2,7 +2,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_pool/5, stop_pool/1, pools/0, worker_pid/1]).
+-export([start_link/0, start_pool/5, stop_pool/1, pools/0, worker_pid/2]).
 -export([start_balancer/2, stop_balancer/1]).
 -export([start_router/2, stop_router/1]).
 
@@ -67,14 +67,6 @@ worker_pid(PoolId, Pools) ->
             undefined
     end.
 
-
-worker_pid(PoolId) ->
-    case [{Pid, Module} || {Id, Pid, _, [Module]} <- supervisor:which_children(?MODULE), Id =:= PoolId] of
-        [{Pid, Module}] ->
-            Module:pid(Pid);
-        _ ->
-            undefined
-    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %% supervisor callbacks %%
