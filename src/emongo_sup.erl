@@ -56,7 +56,17 @@ stop_pool(PoolId) ->
     supervisor:delete_child(?MODULE, PoolId).
 
 pools() ->
-    [{PoolId, Pid} || {PoolId, Pid, _, [emongo_pool]} <- supervisor:which_children(?MODULE)].
+    [{Id, Pid, Module} || {Id, Pid, _, [Module]}
+                              <- supervisor:which_children(?MODULE)].
+
+worker_pid(PoolId, Pools) ->
+    case lists:keyfind(PoolId, 1, Pools) of
+        {_, Pid, Module} ->
+            Module:pid(Pid);
+        _ ->
+            undefined
+    end.
+
 
 worker_pid(PoolId) ->
     case [{Pid, Module} || {Id, Pid, _, [Module]} <- supervisor:which_children(?MODULE), Id =:= PoolId] of
