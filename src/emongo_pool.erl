@@ -90,7 +90,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid, _Reason}, #pool{conn_pid=Pids}=State) ->
+handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
+    error_logger:error_msg("Pool ~p deactivated by worker death: ~p~n'", [State#pool.id, Reason]),
+    
     Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
     {noreply, State#pool{conn_pid = Pids1, active=false}};
 
@@ -151,7 +153,7 @@ do_poll(Pool) ->
             PacketLast = emongo_packet:get_last_error(Database, ReqId),
             case catch emongo_server:send_recv(Pid, ReqId, PacketLast, ?POLL_TIMEOUT) of
                 {'EXIT', Reason} ->
-                    error_logger:error_msg("Pool ~p deactivated: ~p~n'", [Pool#pool.id, Reason]),
+                    error_logger:error_msg("Pool ~p deactivated by polling: ~p~n'", [Pool#pool.id, Reason]),
                     NewPool#pool{active=false};
                 _ ->
                     NewPool#pool{active=true}

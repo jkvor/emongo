@@ -128,7 +128,10 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 			  Documents:DocLen/binary,
 			  Tail/binary>> = Message,
 			Resp = #response{
-				header = {header, Length, ReqID, RespTo, Op}, 
+				header = #header{message_length = Length,
+                                                 request_id = ReqID,
+                                                 response_to = RespTo,
+                                                 op_code = Op},
 				response_flag = RespFlag, 
 				cursor_id = CursorID, 
 				offset = StartingFrom, 
