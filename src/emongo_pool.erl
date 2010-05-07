@@ -14,7 +14,8 @@
 
 -include("emongo.hrl").
 
--define(POLL_TIME, 10000).
+-define(POLL_INTERVAL, 10000).
+-define(POLL_TIMEOUT, 500).
 
 -record(pool, {id,
                host,
@@ -94,7 +95,7 @@ handle_info({'EXIT', Pid, _Reason}, #pool{conn_pid=Pids}=State) ->
     {noreply, State#pool{conn_pid = Pids1, active=false}};
 
 handle_info(poll, State) ->
-    erlang:send_after(?POLL_TIME, self(), poll),
+    erlang:send_after(?POLL_INTERVAL, self(), poll),
     NewState = do_open_connections(State),
     {noreply, NewState};
 
@@ -148,8 +149,9 @@ do_poll(Pool) ->
     case get_pid(Pool) of
         {{Pid, Database, ReqId}, NewPool} ->
             PacketLast = emongo_packet:get_last_error(Database, ReqId),
-            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, 500) of
-                {'EXIT', _} ->
+            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, ?POLL_TIMEOUT) of
+                {'EXIT', Reason} ->
+                    error_logger:error_msg("Pool ~p deactivated: ~p~n'", [Pool#pool.id, Reason]),
                     NewPool#pool{active=false};
                 _ ->
                     NewPool#pool{active=true}

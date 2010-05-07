@@ -43,7 +43,6 @@
 %%====================================================================
 %% pool_id() = atom()
 %% collection() = string()
-%% response() = {response, header, response_flag, cursor_id, offset, limit, documents}
 %% documents() = [document()]
 %% document() = [{term(), term()}]
 
@@ -76,13 +75,7 @@ find(PoolId, Collection) ->
 	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
 find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]);
-
-%% this function has been deprecated
-find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
-	{Pid, Database, ReqId} = get_pid_pool(PoolId),
-	Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
-	emongo_server:send_recv(Pid, ReqId, Packet, ?TIMEOUT).
+	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
 
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
@@ -100,7 +93,7 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Field = string() | binary() | atom() | integer() = specifies a field to return in the result set
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
-find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
+find(PoolId, Collection, Selector, Options) ->
 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
 	Query = create_query(Options, Selector),
 	Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
@@ -141,7 +134,7 @@ find_all(_PoolId, _Collection, _Selector, Options, Resp) when is_record(Resp, re
 	end;
 
 find_all(PoolId, Collection, Selector, Options, Resp) when is_record(Resp, response) ->
-	Resp1 = get_more(PoolId, Collection, Resp#response.cursor_id, proplists:get_value(timeout, Options, ?TIMEOUT)),
+	Resp1 = get_more(Resp#response.pool_id, Collection, Resp#response.cursor_id, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	Documents = lists:append(Resp#response.documents, Resp1#response.documents),
 	find_all(PoolId, Collection, Selector, Options, Resp1#response{documents=Documents}).
 

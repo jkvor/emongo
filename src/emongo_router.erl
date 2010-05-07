@@ -62,21 +62,8 @@ init([BalId, Pools]) ->
 %% Description: Handling call messagesp
 %%--------------------------------------------------------------------
 handle_call(pid, From, #state{id=BalId, active=Active, passive=Passive, timer=Timer}=State) ->
-    case Active of
-        [PoolIdx | Active2] ->
-            case emongo_sup:worker_pid(?POOL_ID(BalId, PoolIdx)) of
-                undefined ->
-                    handle_call(pid, From,
-                                State#state{active=Active2,
-                                            passive=[PoolIdx | Passive],
-                                            timer=set_timer(Timer)
-                                           });
-                Pid ->
-                    {reply, Pid, State}
-            end;
-        [] ->
-            {reply, undefined, State}
-    end;
+    {Pid, NewState} = get_pid(State, emongo_sup:pools()),
+    {reply, Pid, NewState};
 
 handle_call(stop_children, _, #state{id=BalId, active=Active, passive=Passive}=State) ->
     Fun = fun(PoolIdx) ->
@@ -148,6 +135,25 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+get_pid(#state{id=BalId, active=Active, passive=Passive, timer=Timer}=State, Pools) ->
+    case Active of
+        [PoolIdx | Active2] ->
+            case emongo_sup:worker_pid(?POOL_ID(BalId, PoolIdx), Pools) of
+                undefined ->
+                    error_logger:info_msg("pool ~p is disabled!~n", [?POOL_ID(BalId, PoolIdx)]),
+                    
+                    get_pid(State#state{active=Active2,
+                                        passive=[PoolIdx | Passive],
+                                        timer=set_timer(Timer)
+                                       }, Pools);
+                Pid ->
+                    {Pid, State}
+            end;
+        [] ->
+            {undefined, State}
+    end.
+
+
 set_timer(undefined) ->
     erlang:send_after(?RECHECK_TIME, self(), recheck);
 set_timer(TimerRef) ->
@@ -165,5 +171,6 @@ activate(#state{id=BalId, active=Active, passive=[PoolIdx | Passive]}=State, Acc
         undefined ->
             activate(State#state{passive=Passive}, [PoolIdx | Acc]);
         _ ->
+            error_logger:info_msg("pool ~p is enabled!~n", [?POOL_ID(BalId, PoolIdx)]),
             activate(State#state{active=lists:umerge([PoolIdx], Active), passive=Passive}, Acc)
     end.

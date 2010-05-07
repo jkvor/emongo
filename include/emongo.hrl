@@ -1,5 +1,13 @@
 -record(header, {message_length, request_id, response_to, op_code}).
--record(response, {header, response_flag, cursor_id, offset, limit, documents}).
+-record(response, {
+          header,
+          response_flag,
+          cursor_id,
+          offset,
+          limit,
+          documents,
+          pool_id
+         }).
 -record(emo_query, {opts=[], offset=0, limit=0, q=[], field_selector=[]}).
 
 -define(IS_DOCUMENT(Doc), (is_list(Doc) andalso (Doc == [] orelse (is_tuple(hd(Doc)) andalso tuple_size(hd(Doc)) == 2)))).

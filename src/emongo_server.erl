@@ -63,7 +63,8 @@ handle_info({tcp, _Socket, Data}, State) ->
 				false ->
 					exit({unexpected_response, Resp});
 				{value, {ResponseTo, Request}, Requests} ->
-					gen_server:reply(Request#request.requestor, {ok, Resp}),
+					gen_server:reply(Request#request.requestor,
+                                                         {ok, Resp#response{pool_id=State#state.pool_id}}),
 					{noreply, State#state{requests=Requests, leftover=Tail}}
 			end
 	end;
