@@ -30,7 +30,7 @@
 		 find_all/2, find_all/3, find_all/4, get_more/4,
 		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, delete/2, delete/3,
-		 ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
+		 ensure_index/3, count/2, distinct/3, dec2hex/1, hex2dec/1]).
 
 -include("emongo.hrl").
 
@@ -217,6 +217,17 @@ count(PoolId, Collection) ->
 	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
 		#response{documents=[[{<<"n">>,Count}|_]]} ->
 			round(Count);
+		_ ->
+			undefined
+	end.
+
+distinct(PoolId, Collection, Key) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Query = #emo_query{q=[{<<"distinct">>, Collection}, {<<"key">>, Key}, {<<"ns">>, Pool#pool.database}], limit=1},
+	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
+	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
+		#response{documents=[[{<<"values">>, {array, Vals}} | _]]} ->
+			Vals;
 		_ ->
 			undefined
 	end.
