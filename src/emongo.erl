@@ -211,19 +211,8 @@ ensure_index(PoolId, Collection, Keys) when ?IS_DOCUMENT(Keys)->
 	Packet = emongo_packet:ensure_index(Pool#pool.database, Collection, Pool#pool.req_id, Keys),
 	emongo_server:send(Pid, Pool#pool.req_id, Packet).
 
-count(PoolId, Collection) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}], limit=1},
-	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
-	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
-		#response{documents=[[{<<"n">>,Count}|_]]} ->
-			round(Count);
-		_ ->
-			undefined
-	end.
+count(PoolId, Collection) -> count(PoolId, Collection, []).
 
-count(PoolId, Collection, []) ->
-	count(PoolId, Collection);
 count(PoolId, Collection, Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Q = [{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database},
@@ -237,20 +226,8 @@ count(PoolId, Collection, Selector) ->
 			undefined
 	end.
 
-distinct(PoolId, Collection, Key) ->
-	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Q = [{<<"distinct">>, Collection}, {<<"key">>, Key}, {<<"ns">>, Pool#pool.database}],
-	Query = #emo_query{q=Q, limit=1},
-	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
-	case emongo_server:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
-		#response{documents=[[{<<"values">>, {array, Vals}} | _]]} ->
-			Vals;
-		_ ->
-			undefined
-	end.
+distinct(PoolId, Collection, Key) -> distinct(PoolId, Collection, Key, []).
 
-distinct(PoolId, Collection, Key, []) ->
-	distinct(PoolId, Collection, Key);
 distinct(PoolId, Collection, Key, Selector) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
 	Q = [{<<"distinct">>, Collection}, {<<"key">>, Key}, {<<"ns">>, Pool#pool.database},
