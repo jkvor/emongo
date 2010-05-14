@@ -19,7 +19,7 @@
                }).
 
 -define(POOL_ID(BalancerId, PoolIdx), {BalancerId, PoolIdx}).
--define(RECHECK_TIME, 10000).
+-define(RECHECK_TIME, 9500).
 
 %%====================================================================
 %% API
@@ -32,7 +32,7 @@ start_link(BalId, Pools) ->
     gen_server:start_link(?MODULE, [BalId, Pools], []).
 
 pid(BalancerPid) ->
-    gen_server:call(BalancerPid, pid, infinity).
+    gen_server:call(BalancerPid, pid).
 
 %%====================================================================
 %% gen_server callbacks
@@ -46,7 +46,6 @@ pid(BalancerPid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([BalId, Pools]) ->
-    process_flag(trap_exit, true),
     self() ! {init, Pools},
     {ok, #state{id = BalId,
                 active = [],
@@ -98,12 +97,12 @@ handle_info({init, Pools}, #state{id=BalId, active=Active}=State) ->
     Fun = fun({Host, Port, Database, Size}, {PoolIdx, PoolList}) ->
                   case emongo_sup:start_pool(?POOL_ID(BalId, PoolIdx),
                                              Host, Port, Database, Size) of
-                      {ok, PoolPid} ->
-                          link(PoolPid),
-                          {PoolIdx + 1, [PoolIdx | PoolList]};
-                      _ ->
-                          {PoolIdx + 1, PoolList}
-                  end
+                      {ok, _} ->
+                          ok;
+                      {error, {already_started, _}} ->
+                          ok
+                  end,
+                  {PoolIdx + 1, [PoolIdx | PoolList]}
           end,
     {_, PoolList} = lists:foldl(Fun, {1, Active}, Pools),
     {noreply, State#state{active=lists:sort(PoolList)}};
