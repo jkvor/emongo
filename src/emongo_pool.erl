@@ -23,6 +23,7 @@
                database,
                size,
                active=false,
+               poll=none,
                conn_pid=queue:new(),
                req_id=1}).
 
@@ -34,7 +35,7 @@ start_link(PoolId, Host, Port, Database, Size) ->
     gen_server:start_link(?MODULE, [PoolId, Host, Port, Database, Size], []).
 
 pid(Pid) ->
-    gen_server:call(Pid, pid, infinity).
+    gen_server:call(Pid, pid).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %% gen_server callbacks %%
@@ -72,6 +73,7 @@ init([PoolId, Host, Port, Database, Size]) ->
 handle_call(pid, _From, #pool{active=true}=State) ->
     {Reply, NewState} = get_pid(State),
     {reply, Reply, NewState};
+
 handle_call(_Request, _From, State) ->
     {reply, undefined, State}.
 
@@ -91,7 +93,8 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
-    error_logger:error_msg("Pool ~p deactivated by worker death: ~p~n'", [State#pool.id, Reason]),
+    error_logger:error_msg("Pool ~p deactivated by worker death: ~p~n",
+                           [State#pool.id, Reason]),
     
     Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
     {noreply, State#pool{conn_pid = Pids1, active=false}};
@@ -101,7 +104,23 @@ handle_info(poll, State) ->
     NewState = do_open_connections(State),
     {noreply, NewState};
 
-handle_info(_Info, State) ->
+handle_info({poll_timeout, Pid, ReqId, Tag}, #pool{poll={Tag, _}}=State) ->
+    case catch emongo_server:recv(Pid, ReqId, 0, Tag) of
+        #response{} ->
+            {noreply, State#pool{active=true, poll=none}};
+        _ ->
+            {noreply, State#pool{active=false, poll=none}}
+    end;
+
+handle_info({Tag, _}, #pool{poll={Tag, TimerRef}}=State) ->
+    _Time = erlang:cancel_timer(TimerRef),
+    %%io:format("polling ~p success: ~p~n", [State#pool.id, Time]),
+    {noreply, State#pool{active=true, poll=none}};
+
+handle_info(Info, State) ->
+    error_logger:info_msg("Pool ~p unknown message: ~p~n",
+                           [State#pool.id, Info]),
+    
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -151,13 +170,9 @@ do_poll(Pool) ->
     case get_pid(Pool) of
         {{Pid, Database, ReqId}, NewPool} ->
             PacketLast = emongo_packet:get_last_error(Database, ReqId),
-            case catch emongo_server:send_recv(Pid, ReqId, PacketLast, ?POLL_TIMEOUT) of
-                {'EXIT', Reason} ->
-                    error_logger:error_msg("Pool ~p deactivated by polling: ~p~n'", [Pool#pool.id, Reason]),
-                    NewPool#pool{active=false};
-                _ ->
-                    NewPool#pool{active=true}
-            end;
+            Tag = emongo_server:send_recv_nowait(Pid, ReqId, PacketLast),
+            TimerRef = erlang:send_after(?POLL_TIMEOUT, self(), {poll_timeout, Pid, ReqId, Tag}),
+            NewPool#pool{poll={Tag, TimerRef}};
         _ ->
             Pool#pool{active=false}
     end.
