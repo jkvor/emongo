@@ -5,74 +5,136 @@
 -include("emongo.hrl").
 
 -export([start_link/3, send/3, send_recv/4]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-		 terminate/2, code_change/3]).
+-export([send_recv_nowait/3, recv/4]).
 
--record(request, {req_id, requestor}).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
+
 -record(state, {pool_id, socket, requests, leftover}).
 
+-define(abort(ReqId), {abort, ReqId}).
+
 start_link(PoolId, Host, Port) ->
-	gen_server:start_link(?MODULE, [PoolId, Host, Port], []).
+    gen_server:start_link(?MODULE, [PoolId, Host, Port], []).
+
 
 send(Pid, ReqID, Packet) ->
     gen_server:cast(Pid, {send, ReqID, Packet}).
 
-send_recv(Pid, ReqID, Packet, Timeout) ->
-	case gen_server:call(Pid, {send_recv, ReqID, Packet}, Timeout) of
-		{ok, Resp} ->
-			Documents = emongo_bson:decode(Resp#response.documents),
-			Resp#response{documents=Documents};
-		{error, Reason} ->
-			exit(Reason)
-	end.
 
-open_socket(Host, Port) ->
-	case gen_tcp:connect(Host, Port, [binary, {active, true}, {nodelay, true}], ?TIMEOUT) of
-		{ok, Sock} ->
-			Sock;
-		{error, Reason} ->
-			exit({failed_to_open_socket, Reason})
-	end.
+send_recv_nowait(Pid, ReqID, Packet) ->
+    Tag = make_ref(),
+    gen_server:cast(Pid, {send_recv, ReqID, Packet, {self(), Tag}}),
+    Tag.
+
+
+recv(Pid, ReqID, 0, Tag) ->
+    Pid ! ?abort(ReqID),
+    receive
+        {Tag, Resp} ->
+            Documents = emongo_bson:decode(Resp#response.documents),
+            Resp#response{documents=Documents}
+    after 0 ->
+            exit(timeout)
+    end;
+
+recv(Pid, ReqID, Timeout, Tag) ->
+    receive
+        {Tag, Resp} ->
+            Documents = emongo_bson:decode(Resp#response.documents),
+            Resp#response{documents=Documents}
+    after Timeout ->
+            recv(Pid, ReqID, 0, Tag)
+    end.
+
+
+send_recv(Pid, ReqID, Packet, Timeout) ->
+    Tag = send_recv_nowait(Pid, ReqID, Packet),
+    recv(Pid, ReqID, Timeout, Tag).
+
 
 %% gen_server %%
 
 init([PoolId, Host, Port]) ->
-	Socket = open_socket(Host, Port),
-	{ok, #state{pool_id=PoolId, socket=Socket, requests=[], leftover = <<>>}}.
+    case gen_tcp:connect(Host, Port, [binary, {active, true}, {nodelay, true}], ?TIMEOUT) of
+        {ok, Socket} ->
+            {ok, #state{pool_id=PoolId, socket=Socket, requests=[], leftover = <<>>}};
+        {error, Reason} ->
+            {stop, {failed_to_open_socket, Reason}}
+    end.
 
-handle_call({send_recv, ReqID, Packet}, From, State) ->
-	gen_tcp:send(State#state.socket, Packet),
-	Request = #request{req_id=ReqID, requestor=From},
-	State1 = State#state{requests=[{ReqID, Request} | State#state.requests]},
-	{noreply, State1}.
+
+handle_call(_Request, _From, State) ->
+    {reply, undefined, State}.
+
+
+handle_cast({send_recv, ReqID, Packet, From}, State) ->
+    gen_tcp:send(State#state.socket, Packet),
+    State1 = State#state{requests=[{ReqID, From} | State#state.requests]},
+    {noreply, State1};
 
 handle_cast({send, _, Packet}, State) ->
-	gen_tcp:send(State#state.socket, Packet),
-	{noreply, State}.
+    gen_tcp:send(State#state.socket, Packet),
+    {noreply, State}.
+
+
+handle_info(?abort(ReqId), #state{requests=Requests}=State) ->
+    State1 = State#state{requests=lists:keydelete(ReqId, 1, Requests)},
+    {noreply, State1};
 
 handle_info({tcp, _Socket, Data}, State) ->
-	Leftover = <<(State#state.leftover)/binary, Data/binary>>,
+    Leftover = <<(State#state.leftover)/binary, Data/binary>>,
 
-	case emongo_packet:decode_response(Leftover) of
-		undefined ->
-			{noreply, State#state{leftover=Leftover}};
-		{Resp, Tail} ->
-			ResponseTo = (Resp#response.header)#header.response_to,
+    case emongo_packet:decode_response(Leftover) of
+        undefined ->
+            {noreply, State#state{leftover=Leftover}};
+        
+        {Resp, Tail} ->
+            ResponseTo = (Resp#response.header)#header.response_to,
 
-			case lists:keytake(ResponseTo, 1, State#state.requests) of
-				false ->
-					exit({unexpected_response, Resp});
-				{value, {ResponseTo, Request}, Requests} ->
-					gen_server:reply(Request#request.requestor,
-                                                         {ok, Resp#response{pool_id=State#state.pool_id}}),
-					{noreply, State#state{requests=Requests, leftover=Tail}}
-			end
-	end;
+            case lists:keytake(ResponseTo, 1, State#state.requests) of
+                false ->
+                    cleanup_cursor(Resp, ResponseTo, State),
+                    {noreply, State#state{leftover=Tail}};
+
+                {value, {_, From}, Requests} ->
+                    case is_aborted(ResponseTo) of
+                        false ->
+                            gen_server:reply(
+                              From,
+                              Resp#response{pool_id=State#state.pool_id});
+                        true ->
+                            cleanup_cursor(Resp, ResponseTo, State)
+                    end,
+                    {noreply, State#state{requests=Requests, leftover=Tail}}
+            end
+    end;
+
 handle_info({tcp_closed, _Socket}, _State) ->
-	exit(tcp_closed);
+    exit(tcp_closed);
+
 handle_info({tcp_error, _Socket, Reason}, _State) ->
-	exit({tcp_error, Reason}).
+    exit({tcp_error, Reason}).
+
 
 terminate(_, State) -> gen_tcp:close(State#state.socket).
 
+
 code_change(_Old, State, _Extra) -> {ok, State}.
+
+%% internal
+
+
+is_aborted(ReqId) ->
+    receive
+        ?abort(ReqId) ->
+            true
+    after 0 ->
+            false
+    end.
+
+cleanup_cursor(#response{cursor_id=0}, _, _) ->
+    ok;
+cleanup_cursor(#response{cursor_id=CursorID}, ReqId, State) ->
+    Packet = emongo_packet:kill_cursors(ReqId, [CursorID]),
+    gen_tcp:send(State#state.socket, Packet).
