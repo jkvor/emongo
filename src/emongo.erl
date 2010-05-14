@@ -26,11 +26,11 @@
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
 		 handle_info/2, terminate/2, code_change/3]).
 
--export([pools/0, oid/0, add_pool/5, del_pool/1, find/2, find/3, find/4,
-		 find_all/2, find_all/3, find_all/4, get_more/4,
-		 get_more/5, find_one/3, find_one/4, kill_cursors/2,
-		 insert/3, update/4, update/5, delete/2, delete/3,
-		 ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
+-export([pools/0, oid/0, add_pool/5, del_pool/1, fold_all/6,
+         find_all/2, find_all/3, find_all/4,
+         find_one/3, find_one/4,
+         insert/3, update/4, update/5, delete/2, delete/3,
+         ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
 
 -export([update_sync/5, delete_sync/3]).
 
@@ -71,11 +71,11 @@ del_pool(PoolId) ->
 %%------------------------------------------------------------------------------
 %% find
 %%------------------------------------------------------------------------------
-find(PoolId, Collection) ->
-	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
+%% find(PoolId, Collection) ->
+%% 	find(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
 
-find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
+%% find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
+%% 	find(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
 
 %% @spec find(PoolId, Collection, Selector, Options) -> Result
 %%		 PoolId = atom()
@@ -93,98 +93,113 @@ find(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 %%		 Field = string() | binary() | atom() | integer() = specifies a field to return in the result set
 %%		 response_options = return {response, header, response_flag, cursor_id, offset, limit, documents}
 %%		 Result = documents() | response()
-find(PoolId, Collection, Selector, Options) ->
-	{Pid, Database, ReqId} = get_pid_pool(PoolId),
-	Query = create_query(Options, Selector),
-	Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
-	Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
-	% TODO: generalize this for all send_recv calls
-	try emongo_server:send_recv(Pid, ReqId, Packet, Timeout) of
-		Resp ->
-			case lists:member(response_options, Options) of
-				true -> Resp;
-				false -> Resp#response.documents
-			end
-	catch
-		exit:{timeout, Reason} ->
-			% force restart of affected emongo_server and try again with a new
-			% emongo_server pid
-			error_logger:warning_report([{timeout, Pid}]),
-			exit(Pid, Reason),
-			find(PoolId, Collection, Selector, Options)
-	end.
+%% find(PoolId, Collection, Selector, Options) ->
+%% 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
+%% 	Query = create_query(Options, Selector),
+%% 	Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
+%% 	Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
+%% 	% TODO: generalize this for all send_recv calls
+%% 	try emongo_server:send_recv(Pid, ReqId, Packet, Timeout) of
+%% 		Resp ->
+%% 			case lists:member(response_options, Options) of
+%% 				true -> Resp;
+%% 				false -> Resp#response.documents
+%% 			end
+%% 	catch
+%% 		exit:{timeout, Reason} ->
+%%                 %% force restart of affected emongo_server and try again with a new
+%%                 %% emongo_server pid
+%% 			error_logger:warning_report([{timeout, Pid}, {reason, Reason}]),
+%% 			exit(Pid, Reason),
+%% 			find(PoolId, Collection, Selector, Options)
+%% 	end.
 
 %%------------------------------------------------------------------------------
 %% find_all
 %%------------------------------------------------------------------------------
+fold_all(F, Value, PoolId, Collection, Selector, Options) ->
+    Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
+    Resp = find_start(PoolId, Collection, Selector, Options, Timeout),
+    NewValue = lists:foldl(F, Value, Resp#response.documents),
+    
+    fold_more(F, NewValue, Collection, Resp#response{documents=[]}, Timeout).
+
+
 find_all(PoolId, Collection) ->
-	find_all(PoolId, Collection, [], [{timeout, ?TIMEOUT}]).
+	find_all(PoolId, Collection, [], []).
 
-find_all(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find_all(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
+find_all(PoolId, Collection, Selector) ->
+	find_all(PoolId, Collection, Selector, []).
 
-find_all(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
-	Resp = find(PoolId, Collection, Selector, [response_options|Options]),
-	find_all(PoolId, Collection, Selector, Options, Resp).
+find_all(PoolId, Collection, Selector, Options) ->
+    fold_all(fun(I, A) -> [I | A] end, [],
+             PoolId, Collection, Selector, Options).
 
-find_all(_PoolId, _Collection, _Selector, Options, Resp) when is_record(Resp, response), Resp#response.cursor_id == 0 ->
-	case lists:member(response_options, Options) of
-		true -> Resp;
-		false -> Resp#response.documents
-	end;
 
-find_all(PoolId, Collection, Selector, Options, Resp) when is_record(Resp, response) ->
-	Resp1 = get_more(Resp#response.pool_id, Collection, Resp#response.cursor_id, proplists:get_value(timeout, Options, ?TIMEOUT)),
-	Documents = lists:append(Resp#response.documents, Resp1#response.documents),
-	find_all(PoolId, Collection, Selector, Options, Resp1#response{documents=Documents}).
+find_start(PoolId, Collection, Selector, Options, Timeout) ->
+    {Pid, Database, ReqId} = get_pid_pool(PoolId),
+    Query = create_query(Options, Selector),
+    Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
+    
+    emongo_server:send_recv(Pid, ReqId, Packet, Timeout).
+
+
+fold_more(_F, Value, _Collection, #response{cursor_id=0}, _Timeout) ->
+    Value;
+
+fold_more(F, Value, Collection, #response{pool_id=PoolId, cursor_id=CursorID}, Timeout) ->
+    {Pid, Database, ReqId} = get_pid_pool(PoolId),
+    Packet = emongo_packet:get_more(Database, Collection, ReqId, 0, CursorID),
+    Resp1 = emongo_server:send_recv(Pid, ReqId, Packet, Timeout),
+    
+    NewValue = lists:foldl(F, Value, Resp1#response.documents),
+    fold_more(F, NewValue, Collection, Resp1#response{documents=[]}, Timeout).
 
 %%------------------------------------------------------------------------------
 %% find_one
 %%------------------------------------------------------------------------------
-find_one(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
-	find_one(PoolId, Collection, Selector, [{timeout, ?TIMEOUT}]).
+find_one(PoolId, Collection, Selector) ->
+	find_one(PoolId, Collection, Selector, []).
 
-find_one(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
-	Options1 = [{limit, 1} | lists:delete(limit, Options)],
-	find(PoolId, Collection, Selector, Options1).
+find_one(PoolId, Collection, Selector, Options) ->
+	Options1 = [{limit, 1} | lists:keydelete(limit, 1, Options)],
+	find_all(PoolId, Collection, Selector, Options1).
 
 %%------------------------------------------------------------------------------
 %% get_more
 %%------------------------------------------------------------------------------
-get_more(PoolId, Collection, CursorID, Timeout) ->
-	get_more(PoolId, Collection, CursorID, 0, Timeout).
+%% get_more(PoolId, Collection, CursorID, Timeout) ->
+%% 	get_more(PoolId, Collection, CursorID, 0, Timeout).
 
-get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
-	{Pid, Database, ReqId} = get_pid_pool(PoolId),
-	Packet = emongo_packet:get_more(Database, Collection, ReqId, NumToReturn, CursorID),
-	emongo_server:send_recv(Pid, ReqId, Packet, Timeout).
+%% get_more(PoolId, Collection, CursorID, NumToReturn, Timeout) ->
 
-kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
-	kill_cursors(PoolId, [CursorID]);
+%% kill_cursors(PoolId, CursorID) when is_integer(CursorID) ->
+%% 	kill_cursors(PoolId, [CursorID]);
 
-kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
-	{Pid, _Database, ReqId} = get_pid_pool(PoolId),
-	Packet = emongo_packet:kill_cursors(ReqId, CursorIDs),
-	emongo_server:send(Pid, ReqId, Packet).
+%% kill_cursors(PoolId, CursorIDs) when is_list(CursorIDs) ->
+%% 	{Pid, _Database, ReqId} = get_pid_pool(PoolId),
+%% 	Packet = emongo_packet:kill_cursors(ReqId, CursorIDs),
+%% 	emongo_server:send(Pid, ReqId, Packet).
 
 %%------------------------------------------------------------------------------
 %% insert
 %%------------------------------------------------------------------------------
-insert(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
-	insert(PoolId, Collection, [Document]);
-
-insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
+insert(PoolId, Collection, [[_|_]|_]=Documents) ->
 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
 	Packet = emongo_packet:insert(Database, Collection, ReqId, Documents),
-	emongo_server:send(Pid, ReqId, Packet).
+	emongo_server:send(Pid, ReqId, Packet);
+
+insert(PoolId, Collection, Document) ->
+	insert(PoolId, Collection, [Document]).
+
 
 %%------------------------------------------------------------------------------
 %% update
 %%------------------------------------------------------------------------------
-update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
+update(PoolId, Collection, Selector, Document) ->
 	update(PoolId, Collection, Selector, Document, false).
 
-update(PoolId, Collection, Selector, Document, Upsert) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
+update(PoolId, Collection, Selector, Document, Upsert) ->
 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
 	Packet = emongo_packet:update(Database, Collection, ReqId, Upsert, Selector, Document),
 	emongo_server:send(Pid, ReqId, Packet).
@@ -219,7 +234,7 @@ delete_sync(PoolId, Collection, Selector) ->
 %%------------------------------------------------------------------------------
 %% ensure index
 %%------------------------------------------------------------------------------
-ensure_index(PoolId, Collection, Keys) when ?IS_DOCUMENT(Keys)->
+ensure_index(PoolId, Collection, Keys) ->
 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
 	Packet = emongo_packet:ensure_index(Database, Collection, ReqId, Keys),
 	emongo_server:send(Pid, ReqId, Packet).
