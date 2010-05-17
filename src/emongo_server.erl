@@ -84,31 +84,7 @@ handle_info(?abort(ReqId), #state{requests=Requests}=State) ->
 
 handle_info({tcp, _Socket, Data}, State) ->
     Leftover = <<(State#state.leftover)/binary, Data/binary>>,
-
-    case emongo_packet:decode_response(Leftover) of
-        undefined ->
-            {noreply, State#state{leftover=Leftover}};
-        
-        {Resp, Tail} ->
-            ResponseTo = (Resp#response.header)#header.response_to,
-
-            case lists:keytake(ResponseTo, 1, State#state.requests) of
-                false ->
-                    cleanup_cursor(Resp, ResponseTo, State),
-                    {noreply, State#state{leftover=Tail}};
-
-                {value, {_, From}, Requests} ->
-                    case is_aborted(ResponseTo) of
-                        false ->
-                            gen_server:reply(
-                              From,
-                              Resp#response{pool_id=State#state.pool_id});
-                        true ->
-                            cleanup_cursor(Resp, ResponseTo, State)
-                    end,
-                    {noreply, State#state{requests=Requests, leftover=Tail}}
-            end
-    end;
+    {noreply, process_bin(State#state{leftover= <<>>}, Leftover)};
 
 handle_info({tcp_closed, _Socket}, _State) ->
     exit(tcp_closed);
@@ -123,6 +99,36 @@ terminate(_, State) -> gen_tcp:close(State#state.socket).
 code_change(_Old, State, _Extra) -> {ok, State}.
 
 %% internal
+
+
+process_bin(State, <<>>) ->
+    State;
+
+process_bin(State, Bin) ->
+    case emongo_packet:decode_response(Bin) of
+        undefined ->
+            State#state{leftover=Bin};
+        
+        {Resp, Tail} ->
+            ResponseTo = (Resp#response.header)#header.response_to,
+
+            case lists:keytake(ResponseTo, 1, State#state.requests) of
+                false ->
+                    cleanup_cursor(Resp, ResponseTo, State),
+                    process_bin(State, Tail);
+                
+                {value, {_, From}, Requests} ->
+                    case is_aborted(ResponseTo) of
+                        false ->
+                            gen_server:reply(
+                              From,
+                              Resp#response{pool_id=State#state.pool_id});
+                        true ->
+                            cleanup_cursor(Resp, ResponseTo, State)
+                    end,
+                    process_bin(State#state{requests=Requests}, Tail)
+            end
+    end.
 
 
 is_aborted(ReqId) ->

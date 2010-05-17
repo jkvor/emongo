@@ -139,7 +139,10 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
 				documents = Documents
 			},
 			{Resp, Tail}
-	end.
+	end;
+
+decode_response(_) ->
+    undefined.
 
 index_name([], Bin) -> Bin;
 index_name([{Key, Val}|Tail], Bin) ->
