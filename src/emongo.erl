@@ -30,7 +30,8 @@
          find_all/2, find_all/3, find_all/4,
          find_one/3, find_one/4,
          insert/3, update/4, update/5, delete/2, delete/3,
-         ensure_index/3, count/2, dec2hex/1, hex2dec/1]).
+		 ensure_index/3, count/2, count/3, distinct/3, distinct/4,
+		 dec2hex/1, hex2dec/1]).
 
 -export([update_sync/5, delete_sync/3]).
 
@@ -239,9 +240,15 @@ ensure_index(PoolId, Collection, Keys) ->
 	Packet = emongo_packet:ensure_index(Database, Collection, ReqId, Keys),
 	emongo_server:send(Pid, ReqId, Packet).
 
-count(PoolId, Collection) ->
+
+count(PoolId, Collection) -> count(PoolId, Collection, []).
+
+
+count(PoolId, Collection, Selector) ->
 	{Pid, Database, ReqId} = get_pid_pool(PoolId),
-	Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Database}], limit=1},
+	Q = [{<<"count">>, Collection}, {<<"ns">>, Database},
+		 {<<"query">>, transform_selector(Selector)}],
+	Query = #emo_query{q=Q, limit=1},
 	Packet = emongo_packet:do_query(Database, "$cmd", ReqId, Query),
 	case emongo_server:send_recv(Pid, ReqId, Packet, ?TIMEOUT) of
 		#response{documents=[[{<<"n">>,Count}|_]]} ->
@@ -249,6 +256,23 @@ count(PoolId, Collection) ->
 		_ ->
 			undefined
 	end.
+
+
+distinct(PoolId, Collection, Key) -> distinct(PoolId, Collection, Key, []).
+
+distinct(PoolId, Collection, Key, Selector) ->
+	{Pid, Database, ReqId} = get_pid_pool(PoolId),
+	Q = [{<<"distinct">>, Collection}, {<<"key">>, Key}, {<<"ns">>, Database},
+		 {<<"query">>, transform_selector(Selector)}],
+	Query = #emo_query{q=Q, limit=1},
+	Packet = emongo_packet:do_query(Database, "$cmd", ReqId, Query),
+	case emongo_server:send_recv(Pid, ReqId, Packet, ?TIMEOUT) of
+		#response{documents=[[{<<"values">>, {array, Vals}} | _]]} ->
+			Vals;
+		_ ->
+			undefined
+	end.
+
 
 %drop_collection(PoolId, Collection) when is_atom(PoolId), is_list(Collection) ->
 
