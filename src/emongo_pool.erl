@@ -6,7 +6,9 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, pid/1]).
+-export([start_link/5, pid/1, pid/2]).
+
+-deprecated([pid/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -24,8 +26,17 @@
                size,
                active=false,
                poll=none,
-               conn_pid=queue:new(),
+               conn_pid=pqueue:new(),
                req_id=1}).
+
+%% messages
+-define(pid(RequestCount), {pid, RequestCount}).
+-define(poll(), poll).
+-define(poll_timeout(Pid, ReqId, Tag), {poll_timeout, Pid, ReqId, Tag}).
+
+%% to be removed next release
+-define(old_pid(), pid).
+
 
 %%%%%%%%%%%%%%%%
 %% public api %%
@@ -36,6 +47,9 @@ start_link(PoolId, Host, Port, Database, Size) ->
 
 pid(Pid) ->
     gen_server:call(Pid, pid).
+
+pid(Pid, RequestCount) ->
+    gen_server:call(Pid, {pid, RequestCount}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %% gen_server callbacks %%
@@ -58,7 +72,7 @@ init([PoolId, Host, Port, Database, Size]) ->
                  size = Size
                 },
     
-    {noreply, Pool} = handle_info(poll, Pool0),
+    {noreply, Pool} = handle_info(?poll(), Pool0),
     {ok, Pool}.
 
 %%--------------------------------------------------------------------
@@ -70,8 +84,12 @@ init([PoolId, Host, Port, Database, Size]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(pid, _From, #pool{active=true}=State) ->
-    {Reply, NewState} = get_pid(State),
+handle_call(?old_pid(), _From, #pool{active=true}=State) ->
+    {Reply, NewState} = get_pid(State, 1),
+    {reply, Reply, NewState};
+
+handle_call(?pid(RequestCount), _From, #pool{active=true}=State) ->
+    {Reply, NewState} = get_pid(State, RequestCount),
     {reply, Reply, NewState};
 
 handle_call(_Request, _From, State) ->
@@ -96,15 +114,15 @@ handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
     error_logger:error_msg("Pool ~p deactivated by worker death: ~p~n",
                            [State#pool.id, Reason]),
     
-    Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pids),
+    Pids1 = pqueue:filter(fun(Item) -> Item =/= Pid end, Pids),
     {noreply, State#pool{conn_pid = Pids1, active=false}};
 
-handle_info(poll, State) ->
+handle_info(?poll(), State) ->
     erlang:send_after(?POLL_INTERVAL, self(), poll),
     NewState = do_open_connections(State),
     {noreply, NewState};
 
-handle_info({poll_timeout, Pid, ReqId, Tag}, #pool{poll={Tag, _}}=State) ->
+handle_info(?poll_timeout(Pid, ReqId, Tag), #pool{poll={Tag, _}}=State) ->
     case catch emongo_server:recv(Pid, ReqId, 0, Tag) of
         #response{} ->
             {noreply, State#pool{active=true, poll=none}};
@@ -137,41 +155,58 @@ terminate(_Reason, _State) ->
 %% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% Description: Convert process state when code is changed
 %%--------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+code_change(OldVsn, State, _Extra) ->
+    error_logger:info_msg("emongo_pool:code_change(~p, ...)~n", [OldVsn]),
+    
+    State1 = case queue:is_queue(State#pool.conn_pid) of
+                 false ->
+                     State;
+                 true ->
+                     State#pool{conn_pid = queue2pqueue(State#pool.conn_pid, pqueue:new())}
+             end,
+    
+    {ok, State1}.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
-get_pid(#pool{database=Database, conn_pid=Pids, req_id=ReqId}=State) ->
-    case queue:out(Pids) of
-        {{value, Pid}, Q2} ->
-            NewState = State#pool{conn_pid=queue:in(Pid, Q2), req_id=(ReqId + 1)},
-            {{Pid, Database, ReqId}, NewState};
+queue2pqueue(Queue, PQueue) ->
+    case queue:out(Queue) of
         {empty, _} ->
+            PQueue;
+        {{value, Item}, NewQueue} ->
+            queue2pqueue(NewQueue, pqueue:push(1, Item, PQueue))
+    end.
+
+get_pid(#pool{database=Database, conn_pid=Pids, req_id=ReqId}=State, RequestCount) ->
+    case pqueue:pop(Pids) of
+        {Pid, Q2} ->
+            NewState = State#pool{conn_pid=pqueue:push(RequestCount, Pid, Q2),
+                                  req_id=(ReqId + RequestCount)},
+            {{Pid, Database, ReqId}, NewState};
+        empty ->
             {undefined, State}
     end.
 
 do_open_connections(#pool{conn_pid=Pids, size=Size}=Pool) -> 
-    case queue:len(Pids) < Size of
+    case pqueue:size(Pids) < Size of
         true ->
             case emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port) of
                 {error, _Reason} ->
                     Pool#pool{active=false};
                 {ok, Pid} ->
-                    do_open_connections(Pool#pool{conn_pid = queue:in(Pid, Pids)})
+                    do_open_connections(Pool#pool{conn_pid = pqueue:push(1, Pid, Pids)})
             end;
         false ->
             do_poll(Pool)
     end.
 
 do_poll(Pool) ->
-    case get_pid(Pool) of
+    case get_pid(Pool, 2) of
         {{Pid, Database, ReqId}, NewPool} ->
             PacketLast = emongo_packet:get_last_error(Database, ReqId),
             Tag = emongo_server:send_recv_nowait(Pid, ReqId, PacketLast),
-            TimerRef = erlang:send_after(?POLL_TIMEOUT, self(), {poll_timeout, Pid, ReqId, Tag}),
+            TimerRef = erlang:send_after(?POLL_TIMEOUT, self(), ?poll_timeout(Pid, ReqId, Tag)),
             NewPool#pool{poll={Tag, TimerRef}};
         _ ->
             Pool#pool{active=false}

@@ -2,8 +2,11 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, start_pool/5, stop_pool/1, pools/0, worker_pid/2]).
+-export([start_link/0, pools/0, worker_pid/2, worker_pid/3]).
+-export([start_pool/5, stop_pool/1]).
 -export([start_router/2, stop_router/1]).
+
+-deprecated([worker_pid/2]).
 
 %% supervisor exports
 -export([init/1]).
@@ -46,9 +49,13 @@ pools() ->
                               <- supervisor:which_children(?MODULE)].
 
 worker_pid(PoolId, Pools) ->
+    worker_pid(PoolId, Pools, 1).
+
+
+worker_pid(PoolId, Pools, RequestCount) ->
     case lists:keyfind(PoolId, 1, Pools) of
         {_, Pid, Module} ->
-            Module:pid(Pid);
+            Module:pid(Pid, RequestCount);
         _ ->
             undefined
     end.

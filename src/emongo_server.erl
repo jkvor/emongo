@@ -4,27 +4,43 @@
 
 -include("emongo.hrl").
 
--export([start_link/3, send/3, send_recv/4]).
+-export([start_link/3]).
+
+-export([send/3, send/2, send_recv/4]).
 -export([send_recv_nowait/3, recv/4]).
 
+-deprecated([send/3]).
+
+%% gen_server
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {pool_id, socket, requests, leftover}).
 
+%% messages
 -define(abort(ReqId), {abort, ReqId}).
+-define(send(Packet), {send, Packet}).
+-define(send_recv(ReqId, Packet, From),
+        {send_recv, ReqID, Packet, From}).
+
+%% to be removed next release
+-define(old_send(ReqId, Packet), {send, ReqId, Packet}).
+
 
 start_link(PoolId, Host, Port) ->
     gen_server:start_link(?MODULE, [PoolId, Host, Port], []).
 
 
-send(Pid, ReqID, Packet) ->
-    gen_server:cast(Pid, {send, ReqID, Packet}).
+send(Pid, _ReqID, Packet) ->
+    send(Pid, Packet).
+
+send(Pid, Packet) ->
+    gen_server:cast(Pid, ?send(Packet)).
 
 
 send_recv_nowait(Pid, ReqID, Packet) ->
     Tag = make_ref(),
-    gen_server:cast(Pid, {send_recv, ReqID, Packet, {self(), Tag}}),
+    gen_server:cast(Pid, ?send_recv(ReqID, Packet, {self(), Tag})),
     Tag.
 
 
@@ -68,12 +84,16 @@ handle_call(_Request, _From, State) ->
     {reply, undefined, State}.
 
 
-handle_cast({send_recv, ReqID, Packet, From}, State) ->
+handle_cast(?send_recv(ReqID, Packet, From), State) ->
     gen_tcp:send(State#state.socket, Packet),
     State1 = State#state{requests=[{ReqID, From} | State#state.requests]},
     {noreply, State1};
 
-handle_cast({send, _, Packet}, State) ->
+handle_cast(?old_send(_ReqId, Packet), State) ->
+    gen_tcp:send(State#state.socket, Packet),
+    {noreply, State};
+
+handle_cast(?send(Packet), State) ->
     gen_tcp:send(State#state.socket, Packet),
     {noreply, State}.
 
