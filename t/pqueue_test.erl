@@ -60,8 +60,8 @@ ensure_items(Items, Queue) ->
                 Items).
 
 pop_items(Queue) ->
-    case pqueue:is_empty(Queue) of
-        true ->
+    case pqueue:size(Queue) of
+        0 ->
             ok;
         _ ->
             {_Item, NewQueue} = pqueue:pop(Queue),
