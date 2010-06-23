@@ -85,9 +85,14 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast(?send_recv(ReqID, Packet, From), State) ->
-    gen_tcp:send(State#state.socket, Packet),
-    State1 = State#state{requests=[{ReqID, From} | State#state.requests]},
-    {noreply, State1};
+    case is_aborted(ReqID) of
+        true ->
+            {noreply, State};
+        _ ->
+            gen_tcp:send(State#state.socket, Packet),
+            State1 = State#state{requests=[{ReqID, From} | State#state.requests]},
+            {noreply, State1}
+    end;
 
 handle_cast(?old_send(_ReqId, Packet), State) ->
     gen_tcp:send(State#state.socket, Packet),
