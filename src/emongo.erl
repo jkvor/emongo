@@ -141,7 +141,7 @@ find_all(PoolId, Collection, Selector, Options) ->
 
 
 find_all_seq(Collection, Selector, Options) ->
-    fold_all_seq(fun(I, A) -> [I | A] end, [], Collection, Selector, Options).
+    lists:reverse(fold_all_seq(fun(I, A) -> [I | A] end, [], Collection, Selector, Options)).
 
 %%------------------------------------------------------------------------------
 %% fold_all
