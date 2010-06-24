@@ -88,19 +88,26 @@ del_pool(PoolId) ->
 %% sequences of operations
 %%------------------------------------------------------------------------------
 
+sequence(_PoolId, []) ->
+    ok;
 sequence(PoolId, Sequence) ->
-    Len = length(Sequence),
-    {Pid, Database, ReqId} = get_pid_pool(PoolId, Len),
-    lists:foldl(fun(Operation, NewReqId) ->
-                        Operation(Pid, Database, NewReqId)
-                end, ReqId, Sequence).
+    {Pid, Database, ReqId} = get_pid_pool(PoolId, length(Sequence)),
+    sequence(Sequence, Pid, Database, ReqId).
+
+
+sequence([Operation|Tail], Pid, Database, ReqId) ->
+    Result = Operation(Pid, Database, ReqId),
+    case Tail of
+        [] -> Result;
+        _ -> sequence(Tail, Pid, Database, ReqId + 1)
+    end.
 
 
 synchronous() ->
     synchronous(?TIMEOUT).
 
 synchronous(Timeout) ->
-    [fun(_, _, ReqId) -> ReqId end,
+    [fun(_, _, _) -> ok end,
      fun(Pid, Database, ReqId) ->
              PacketGetLastError = emongo_packet:get_last_error(Database, ReqId),
              emongo_server:send_recv(Pid, ReqId, PacketGetLastError, Timeout)
@@ -158,7 +165,7 @@ fold_all(F, Value, PoolId, Collection, Selector, Options) ->
 fold_all_seq(F, Value, Collection, Selector, Options) ->
     Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
     Query = create_query(Options, Selector),
-    [fun(_, _, ReqId) -> ReqId end,
+    [fun(_, _, _) -> ok end,
      fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
              
@@ -200,8 +207,7 @@ insert(PoolId, Collection, Documents) ->
 insert_seq(Collection, [[_|_]|_]=Documents, Next) ->
     [fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:insert(Database, Collection, ReqId, Documents),
-             emongo_server:send(Pid, Packet),
-             ReqId + 1
+             emongo_server:send(Pid, Packet)
      end | Next];
 insert_seq(Collection, Document, Next) ->
     insert_seq(Collection, [Document], Next).
@@ -219,8 +225,7 @@ update(PoolId, Collection, Selector, Document, Upsert) ->
 update_seq(Collection, Selector, Document, Upsert, Next) ->
     [fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:update(Database, Collection, ReqId, Upsert, Selector, Document),
-             emongo_server:send(Pid, Packet),
-             ReqId + 1
+             emongo_server:send(Pid, Packet)
      end | Next].
 
 
@@ -240,8 +245,7 @@ delete(PoolId, Collection, Selector) ->
 delete_seq(Collection, Selector, Next) ->
     [fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:delete(Database, Collection, ReqId, transform_selector(Selector)),
-             emongo_server:send(Pid, Packet),
-             ReqId + 1
+             emongo_server:send(Pid, Packet)
      end | Next].
 
 
