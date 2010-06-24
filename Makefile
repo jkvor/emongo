@@ -20,16 +20,15 @@ package: clean
 	@COPYFILE_DISABLE=true tar zcf $(PKGNAME)-$(VERSION).tgz $(PKGNAME)-$(VERSION)
 	@rm -rf $(PKGNAME)-$(VERSION)/
 
-install:
+install: src
 	@mkdir -p $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/{ebin,include}
-	@mkdir -p $(prefix)/$(ROOTDIR)/bin
 	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
-	cp *.boot $(prefix)/$(ROOTDIR)/bin/
 
-plt:
-	@dialyzer --build_plt --output_plt .plt -q -r . -I include/
 
-check: all
-	@dialyzer --check_plt --plt .plt -q -r . -I include/
+plt: src
+	@dialyzer --check_plt -q -r . -I include/
+
+check: src
+	@dialyzer --src -r . -I include/
 
 FORCE:
