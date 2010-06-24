@@ -24,7 +24,7 @@
                port,
                database,
                size,
-               active=false,
+               active=true,
                poll=none,
                conn_pid=pqueue:new(),
                req_id=1}).
