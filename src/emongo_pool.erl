@@ -17,7 +17,7 @@
 -include("emongo.hrl").
 
 -define(POLL_INTERVAL, 10000).
--define(POLL_TIMEOUT, 500).
+-define(POLL_TIMEOUT, 9000).
 
 -record(pool, {id,
                host,
