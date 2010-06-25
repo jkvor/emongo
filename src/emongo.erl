@@ -367,7 +367,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 get_pid_pool(PoolId, RequestCount) ->
-    emongo_sup:worker_pid(PoolId, emongo_sup:pools(), RequestCount).
+    case emongo_sup:worker_pid(PoolId, emongo_sup:pools(), RequestCount) of
+        undefined -> throw(emongo_busy);
+        Val -> Val
+    end.
 
 
 fold_documents(F, Value, Resp) ->
