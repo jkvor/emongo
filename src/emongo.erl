@@ -41,7 +41,7 @@
          find_all_seq/3, fold_all_seq/5,
          insert_seq/3, update_seq/5, delete_seq/3]).
 
--export([update_sync/5, delete_sync/3]).
+-export([update_sync/5, delete_sync/3, insert_sync/3]).
 
 -deprecated([update_sync/5, delete_sync/3]).
 
@@ -211,6 +211,10 @@ insert_seq(Collection, [[_|_]|_]=Documents, Next) ->
      end | Next];
 insert_seq(Collection, Document, Next) ->
     insert_seq(Collection, [Document], Next).
+
+
+insert_sync(PoolId, Collection, Documents) ->
+    sequence(PoolId, insert_seq(Collection, Documents, synchronous())).
 
 %%------------------------------------------------------------------------------
 %% update
