@@ -30,6 +30,9 @@ encode([]) ->
 encode([{_,_}|_]=List) when is_list(List) ->
 	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
 	<<(size(Bin)+5):32/little-signed, Bin/binary, 0:8>>.
+
+encode_key_value(none, none) ->
+    <<>>;
 		
 %% FLOAT
 encode_key_value(Key, Val) when is_float(Val) ->

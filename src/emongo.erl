@@ -422,10 +422,10 @@ create_query([], QueryRec, QueryDoc, []) ->
     QueryRec#emo_query{q=QueryDoc};
 
 create_query([], QueryRec, [], OptDoc) ->
-    QueryRec#emo_query{q=OptDoc};
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"$query">>, [{none, none}]}])};
 
 create_query([], QueryRec, QueryDoc, OptDoc) ->
-    QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"$query">>, QueryDoc}])};
 
 create_query([{limit, Limit}|Options], QueryRec, QueryDoc, OptDoc) ->
     QueryRec1 = QueryRec#emo_query{limit=Limit},
@@ -437,7 +437,7 @@ create_query([{offset, Offset}|Options], QueryRec, QueryDoc, OptDoc) ->
 
 create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
     Orderby1 = [{Key, case Dir of desc -> -1; _ -> 1 end}|| {Key, Dir} <- Orderby],
-    OptDoc1 = [{<<"orderby">>, Orderby1}|OptDoc],
+    OptDoc1 = [{<<"$orderby">>, Orderby1}|OptDoc],
     create_query(Options, QueryRec, QueryDoc, OptDoc1);
 
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
