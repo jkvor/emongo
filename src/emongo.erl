@@ -260,6 +260,7 @@ delete_sync(PoolId, Collection, Selector) ->
 %%------------------------------------------------------------------------------
 %% ensure index
 %%------------------------------------------------------------------------------
+%% ensure_index(pool, "collection", [{"fieldname1", 1}, {"fieldname2", -1}]).
 ensure_index(PoolId, Collection, Keys) ->
     {Pid, Database, ReqId} = get_pid_pool(PoolId, 1),
     Packet = emongo_packet:ensure_index(Database, Collection, ReqId, Keys),
