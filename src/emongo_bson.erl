@@ -232,10 +232,14 @@ decode_value(10, Tail) ->
 %% INT
 decode_value(16, <<Int:32/little-signed, Tail/binary>>) ->
 	{Int, Tail};
+
+%% Timestamp
+decode_value(17, <<Inc:32/little-signed, Timestamp:32/little-signed, Tail/binary>>) ->
+    {{timestamp, Inc, Timestamp}, Tail};
 		
 %% LONG
 decode_value(18, <<Int:64/little-signed, Tail/binary>>) ->
 	{Int, Tail};
 	
-decode_value(_, _) ->
-	exit(unknown_type).
+decode_value(Type, Tail) ->
+	exit({emongo_unknown_type, Type, Tail}).
