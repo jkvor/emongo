@@ -51,7 +51,7 @@ recv(Pid, ReqID, 0, Tag) ->
             Documents = emongo_bson:decode(Resp#response.documents),
             Resp#response{documents=Documents}
     after 0 ->
-            exit(timeout)
+            exit(emongo_timeout)
     end;
 
 recv(Pid, ReqID, Timeout, Tag) ->
