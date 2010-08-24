@@ -110,7 +110,8 @@ synchronous(Timeout) ->
     [fun(_, _, _) -> ok end,
      fun(Pid, Database, ReqId) ->
              PacketGetLastError = emongo_packet:get_last_error(Database, ReqId),
-             emongo_server:send_recv(Pid, ReqId, PacketGetLastError, Timeout)
+             Resp = emongo_server:send_recv(Pid, ReqId, PacketGetLastError, Timeout),
+             Resp#response.documents
      end].
 
 no_response() ->
