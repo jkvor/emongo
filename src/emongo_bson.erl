@@ -28,8 +28,24 @@ encode([]) ->
 	<<5,0,0,0,0>>;
 	
 encode([{_,_}|_]=List) when is_list(List) ->
+    T = fun({Key, Val}) ->
+        io:format("EKV: ~p~n", [encode_key_value(Key, Val)])
+    end,
+    [T(X) || X <- List],
 	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
-	<<(size(Bin)+5):32/little-signed, Bin/binary, 0:8>>.
+    io:format("Bin: ~p~n", [Bin]),
+    io:format("Bin size: ~p~n", [size(Bin)]),
+	<<(size(Bin)+4):32/little-signed, Bin/binary>>.
+
+encode_document([{_,_}|_]=List) when is_list(List) ->
+    T = fun({Key, Val}) ->
+        io:format("EKV: ~p~n", [encode_key_value(Key, Val)])
+    end,
+    [T(X) || X <- List],
+	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
+    io:format("Bin: ~p~n", [Bin]),
+    io:format("Bin size: ~p~n", [size(Bin)]),
+	<<(size(Bin)+5):32/little-signed, Bin/binary>>.
 		
 %% FLOAT
 encode_key_value(Key, Val) when is_float(Val) ->
@@ -39,20 +55,30 @@ encode_key_value(Key, Val) when is_float(Val) ->
 %% STRING
 encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
 	Key1 = encode_key(Key),
+    io:format("Key: ~p  Value: ~p~n", [Key1, Val]),
 	case unicode:characters_to_binary(Val) of
 		{error, Bin, RestData} ->
 			exit({cannot_convert_chars_to_binary, Val, Bin, RestData});
 		{incomplete, Bin1, Bin2} ->
 			exit({cannot_convert_chars_to_binary, Val, Bin1, Bin2});
 		Val1 ->
-			<<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>
+            case Key1 of 
+                <<"fields">> ->   
+                    FieldsVal = <<0,0,0,0>>,
+			        <<3, Key1/binary, 0, (byte_size(FieldsVal)+1):8/signed, FieldsVal/binary, 0:8>>;
+                _ ->
+                    io:format("MEOW~n"),
+			        <<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>
+            end
 	end;
 	
 %% NESTED OBJECT
 encode_key_value(Key, [{_,_}|_]=Val) ->
 	Key1 = encode_key(Key),
-	Val1 = encode(Val),
-	<<3, Key1/binary, 0, Val1/binary>>;
+    io:format("ABC: ~p~n",[Val]),
+	Val1 = encode_document(Val),
+    io:format("Key1: ~p Val1 ~p~n",[Key1, Val1]),
+	<<3, Key1/binary, 0, Val1/binary, 0:8>>;
 	
 %% DATA ARRAY
 encode_key_value(Key, {array, Val}) when is_list(Val) ->

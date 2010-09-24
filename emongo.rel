@@ -1,0 +1,7 @@
+{release, {"emongo", "emongo-0.2"}, {erts, "5.8"},
+  [{kernel, "2.13.5"},
+   {stdlib, "1.16.5"},
+   {sasl, "2.1.9"},
+   {emongo, "0.2"}
+  ]}.
+
