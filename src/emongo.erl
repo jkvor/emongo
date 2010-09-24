@@ -158,7 +158,13 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Result = documents() | response()
 find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = create_query(Options, Selector),
+    Query = case proplists:is_defined(fields, Options) of
+        true ->
+	        Query1 = create_query(proplists:delete(fields,Options), Selector),
+            Query1#emo_query{field_selector=[{Field, 1} || Field <- proplists:get_value(fields, Options)]};
+        false ->
+	        create_query(Options, Selector)
+    end,
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	case lists:member(response_options, Options) of
@@ -296,21 +302,7 @@ count(PoolId, Collection, [], []) ->
     count(PoolId, Collection);
 count(PoolId, Collection, Selector, Options) ->
     {Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-    %Query1 = create_query(Options, Selector),
-    %Query = create_query(Options, #emo_query{}, transform_selector(Selector), [{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}]),
-    io:format("Options: ~p~n", [Options]),
-    Query = case Options of
-        [] ->
-            create_query([{limit, 1}, {fields, []}], #emo_query{}, transform_selector(Selector), [{<<"count">>, Collection}]);
-        _ ->
-            create_query(Options, #emo_query{}, transform_selector(Selector), [{<<"count">>, Collection}])
-    end,
-    %[TypeSelector] = Query1#emo_query.q,
-    %%[FieldSelector] = Query1#emo_query.field_selector,
-    %CountQ = lists:flatten([Query1#emo_query.q, {<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}]),
-    %Query = #emo_query{q=[{<<"count">>, Collection}, {<<"ns">>, Pool#pool.database}] , field_selector=[TypeSelector]},
-    %Query = #emo_query{q=CountQ},
-    io:format("Query: ~p~n", [Query]),
+    Query = create_query(Options ++ [{fields, []}, {limit, 1}], #emo_query{}, transform_selector(Selector), [{<<"count">>, Collection}]),
 	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
 	case emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
 		#response{documents=[[{<<"n">>,Count}|_]]} ->
@@ -533,10 +525,11 @@ create_query([], QueryRec, [], OptDoc) ->
 	QueryRec#emo_query{q=OptDoc};
 	
 create_query([], QueryRec, QueryDoc, OptDoc) ->
-    io:format("create_query query: ~p~n", [OptDoc]),
-	Q1 = QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}] ++ [{<<"fields">>, []}])},
-    io:format("create_query query: ~p~n", [Q1]),
-    Q1;
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
+
+create_query([{fields, Fields}], QueryRec, QueryDoc, OptDoc) ->
+    QueryFields = [{Field, 1} || Field <- Fields],
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}] ++ [{<<"fields">>, QueryFields}])};
 	
 create_query([{limit, Limit}|Options], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec1 = QueryRec#emo_query{limit=Limit},
@@ -552,15 +545,9 @@ create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc1);
 	
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
-	OptDoc1 = case Fields of
-        [] ->
-            io:format("create_query fields~n"),
-	        OptDoc ++ [{<<"fields">>, <<0,5,0,0,0,0,0>>}];
-        _ ->
-            QueryFields = QueryRec#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
-	        OptDoc ++ [{<<"fields">>, QueryFields}]
-    end,
-	create_query(Options, QueryRec, QueryDoc, OptDoc);
+    %% The fields document needs to be last
+    %% so it requires some special handling
+	create_query(proplists:delete(fields, Options) ++ [{fields, Fields}], QueryRec, QueryDoc, OptDoc);
 	
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc).

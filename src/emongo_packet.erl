@@ -47,28 +47,19 @@ insert(Database, Collection, ReqID, Documents) ->
 do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
 	OptsSum = lists:foldl(fun(X, Acc) -> Acc+X end, 0, Query#emo_query.opts),
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
-    io:format("Query: ~p~n", [Query#emo_query.q]),
 	EncodedDocument = if 
 		is_binary(Query#emo_query.q) -> Query#emo_query.q; 
 		true -> emongo_bson:encode(Query#emo_query.q)
 	end,
-	%EncodedFieldSelector = if 
-		%Query#emo_query.field_selector == [] -> <<"fields", 0,5,0,0,0,0,0>>; 
-		%true -> emongo_bson:encode(Query#emo_query.field_selector) 
-	%end,
-    io:format("ED: ~p~n", [EncodedDocument]),
-    %io:format("EFS: ~p~n", [EncodedFieldSelector]),
-	%Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
-				%(Query#emo_query.offset):32/little-signed, 
-				%(Query#emo_query.limit):32/little-signed, 
-				%EncodedDocument/binary, EncodedFieldSelector/binary>>,
-	Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
-				(Query#emo_query.offset):32/little-signed, 
-				(Query#emo_query.limit):32/little-signed, 
-				EncodedDocument/binary>>,
+    EncodedFieldSelector = if 
+        Query#emo_query.field_selector == [] -> <<>>; 
+        true -> emongo_bson:encode(Query#emo_query.field_selector) 
+    end,
+    Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
+                (Query#emo_query.offset):32/little-signed, 
+                (Query#emo_query.limit):32/little-signed, 
+                EncodedDocument/binary, EncodedFieldSelector/binary>>,
 	Length = byte_size(Message),
-    io:format("MESSAGE: ~p~n", [Message]),
-    io:format("Length: ~p~n", [Length]),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
 
 get_more(Database, Collection, ReqID, NumToReturn, CursorID) ->
