@@ -169,12 +169,16 @@ fold_all_seq(F, Value, Collection, Selector, Options) ->
     [fun(_, _, _) -> ok end,
      fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
-             
              Resp = emongo_server:send_recv(Pid, ReqId, Packet, Timeout),
              
              NewValue = fold_documents(F, Value, Resp),
-                            
-             fold_more(F, NewValue, Collection, Resp#response{documents=[]}, Timeout)
+             case Query#emo_query.limit of
+                 0 ->
+                     fold_more(F, NewValue, Collection, Resp#response{documents=[]}, Timeout);
+                 _ ->
+                     kill_cursor(Resp#response.pool_id, Resp#response.cursor_id),
+                     NewValue
+             end
      end].
 
 
