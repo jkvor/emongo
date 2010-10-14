@@ -31,3 +31,5 @@
 -define(SLAVE_OK, 4).
 -define(OPLOG, 8).
 -define(NO_CURSOR_TIMEOUT, 16).
+
+-define(DUPLICATE_KEY_ERROR, 11000).
