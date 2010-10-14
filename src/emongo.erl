@@ -231,6 +231,23 @@ insert(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
 	emongo_conn:send(Pid, Pool#pool.req_id, Packet).
 
 %%------------------------------------------------------------------------------
+%% insert_sync that runs db.$cmd.findOne({getlasterror: 1});
+%%------------------------------------------------------------------------------
+insert_sync(PoolId, Collection, Document) when ?IS_DOCUMENT(Document) ->
+	insert_sync(PoolId, Collection, [Document]);
+
+insert_sync(PoolId, Collection, Documents) when ?IS_LIST_OF_DOCUMENTS(Documents) ->
+	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+	Packet1 = emongo_packet:insert(Pool#pool.database, Collection, Pool#pool.req_id, Documents),
+	Query1 = #emo_query{q=[{<<"getlasterror">>, 1}], limit=1},
+    Packet2 = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query1),
+    Resp = emongo_conn:send_sync(Pid, Pool#pool.req_id, Packet1, Packet2, ?TIMEOUT),
+    case lists:keysearch(<<"code">>, 1, lists:nth(1, Resp#response.documents)) of
+        false -> ok;
+        {value, {_, ErrCode}} -> {error, ErrCode}
+    end.
+
+%%------------------------------------------------------------------------------
 %% update
 %%------------------------------------------------------------------------------
 update(PoolId, Collection, Selector, Document) when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Document) ->
