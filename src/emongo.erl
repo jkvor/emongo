@@ -123,7 +123,7 @@ no_response() ->
 %%   Collection = string()
 %%   Selector = document()
 %%   Options = [Option]
-%%   Option = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | response_options
+%%   Option = {timeout, Timeout} | {limit, Limit} | {offset, Offset} | {orderby, Orderby} | {fields, Fields} | explain
 %%   Timeout = integer (timeout in milliseconds)
 %%   Limit = integer
 %%   Offset = integer
@@ -449,6 +449,9 @@ create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
     QueryRec1 = QueryRec#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
     create_query(Options, QueryRec1, QueryDoc, OptDoc);
+
+create_query([explain | Options], QueryRec, QueryDoc, OptDoc) ->
+    create_query(Options, QueryRec, QueryDoc, [{<<"$explain">>,true}|OptDoc]);
 
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
     create_query(Options, QueryRec, QueryDoc, OptDoc).
