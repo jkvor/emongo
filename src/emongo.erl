@@ -28,7 +28,7 @@
 
 -export([pools/0, oid/0, oid_generation_time/1, add_pool/5, remove_pool/1,
          auth/3, find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
-         find_and_modify/5,
+         find_and_modify/5, insert_sync/3,
          get_more/4, get_more/5, find_one/3, find_one/4, kill_cursors/2,
          insert/3, update/4, update/5, update_sync/4, update_sync/5,
          delete/2, delete/3, ensure_index/3, count/2, dec2hex/1,
