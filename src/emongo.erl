@@ -205,7 +205,7 @@ find_one(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_
 %% find_and_modify
 %%------------------------------------------------------------------------------
 find_and_modify(PoolId, Collection, Selector, Update, Options)
-  when ?IS_DOCUMENT(Selector), is_list(Options) ->
+  when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Update), is_list(Options) ->
     {Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
     Selector1 = transform_selector(Selector),
     Collection1 = unicode:characters_to_binary(Collection),
