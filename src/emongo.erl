@@ -28,6 +28,7 @@
 
 -export([pools/0, oid/0, oid_generation_time/1, add_pool/5, remove_pool/1,
          auth/3, find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
+         find_and_modify/5,
          get_more/4, get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, update_sync/4, update_sync/5,
 		 delete/2, delete/3, ensure_index/3, count/2, dec2hex/1,
@@ -199,6 +200,28 @@ find_one(PoolId, Collection, Selector) when ?IS_DOCUMENT(Selector) ->
 find_one(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	Options1 = [{limit, 1} | lists:delete(limit, Options)],
 	find(PoolId, Collection, Selector, Options1).
+
+%%------------------------------------------------------------------------------
+%% find_and_modify
+%%------------------------------------------------------------------------------
+find_and_modify(PoolId, Collection, Selector, Update, Options)
+  when ?IS_DOCUMENT(Selector), is_list(Options) ->
+    {Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+    Selector1 = transform_selector(Selector),
+    Collection1 = unicode:characters_to_binary(Collection),
+    OptionsDoc = fam_options(Options, [{<<"query">>, Selector1},
+                                       {<<"update">>, Update}]),
+    Query = #emo_query{q=[{<<"findAndModify">>, Collection1} | OptionsDoc],
+                       limit=1},
+    Packet = emongo_packet:do_query(Pool#pool.database, "$cmd",
+                                    Pool#pool.req_id, Query),
+    Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet,
+        proplists:get_value(timeout, Options, ?TIMEOUT)),
+    case lists:member(response_options, Options) of
+        true -> Resp;
+        false -> Resp#response.documents
+    end.
+
 
 %%------------------------------------------------------------------------------
 %% get_more
@@ -545,7 +568,27 @@ create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
 	
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc).
-	
+
+
+fam_options([], OptDoc) -> OptDoc;
+fam_options([{sort, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{remove, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{update, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{new, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{fields, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{upsert, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([_ | Options], OptDoc) ->
+    fam_options(Options, OptDoc).
+
+opt({Atom, Val}) when is_atom(Atom) ->
+    {list_to_binary(atom_to_list(Atom)), Val}.
+
 transform_selector(Selector) ->
 	transform_selector(Selector, []).
 	
