@@ -575,8 +575,8 @@ fam_options([{sort, _}=Opt | Options], OptDoc) ->
     fam_options(Options, [opt(Opt) | OptDoc]);
 fam_options([{remove, _}=Opt | Options], OptDoc) ->
     fam_options(Options, [opt(Opt) | OptDoc]);
-fam_options([{update, _}=Opt | Options], OptDoc) ->
-    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{update, _} | Options], OptDoc) ->
+    fam_options(Options, OptDoc); % update is a param to find_and_modify/5
 fam_options([{new, _}=Opt | Options], OptDoc) ->
     fam_options(Options, [opt(Opt) | OptDoc]);
 fam_options([{fields, _}=Opt | Options], OptDoc) ->
