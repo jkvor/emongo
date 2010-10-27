@@ -1,5 +1,5 @@
 %% Copyright (c) 2009 Jacob Vorreuter <jacob.vorreuter@gmail.com>
-%% 
+%%
 %% Permission is hereby granted, free of charge, to any person
 %% obtaining a copy of this software and associated documentation
 %% files (the "Software"), to deal in the Software without
@@ -8,10 +8,10 @@
 %% copies of the Software, and to permit persons to whom the
 %% Software is furnished to do so, subject to the following
 %% conditions:
-%% 
+%%
 %% The above copyright notice and this permission notice shall be
 %% included in all copies or substantial portions of the Software.
-%% 
+%%
 %% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 %% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 %% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -22,12 +22,12 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_packet).
 
--export([update/6, insert/4, do_query/4, get_more/5, 
+-export([update/6, insert/4, do_query/4, get_more/5,
 		 delete/4, kill_cursors/2, msg/2, decode_response/1,
 		 ensure_index/4]).
 
 -include("emongo.hrl").
-	
+
 update(Database, Collection, ReqID, Upsert, Selector, Document) ->
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
 	EncodedSelector = emongo_bson:encode(Selector),
@@ -47,17 +47,17 @@ insert(Database, Collection, ReqID, Documents) ->
 do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
 	OptsSum = lists:foldl(fun(X, Acc) -> Acc+X end, 0, Query#emo_query.opts),
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
-	EncodedDocument = if 
-		is_binary(Query#emo_query.q) -> Query#emo_query.q; 
+	EncodedDocument = if
+		is_binary(Query#emo_query.q) -> Query#emo_query.q;
 		true -> emongo_bson:encode(Query#emo_query.q)
 	end,
-	EncodedFieldSelector = if 
-		Query#emo_query.field_selector == [] -> <<>>; 
-		true -> emongo_bson:encode(Query#emo_query.field_selector) 
+	EncodedFieldSelector = if
+		Query#emo_query.field_selector == [] -> <<>>;
+		true -> emongo_bson:encode(Query#emo_query.field_selector)
 	end,
 	Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
-				(Query#emo_query.offset):32/little-signed, 
-				(Query#emo_query.limit):32/little-signed, 
+				(Query#emo_query.offset):32/little-signed,
+				(Query#emo_query.limit):32/little-signed,
 				EncodedDocument/binary, EncodedFieldSelector/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
@@ -67,7 +67,7 @@ get_more(Database, Collection, ReqID, NumToReturn, CursorID) ->
 	Message = <<0:32, FullName/binary, 0, NumToReturn:32/little-signed, CursorID:64/little-signed>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_GET_MORE:32/little-signed, Message/binary>>.
-	
+
 delete(Database, Collection, ReqID, Selector) ->
 	FullName = unicode:characters_to_binary([Database, ".", Collection]),
 	EncodedDocument = emongo_bson:encode(Selector),
@@ -95,26 +95,26 @@ kill_cursors(ReqID, CursorIDs) ->
 msg(ReqID, Message) ->
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_MSG:32/little-signed, Message/binary>>.
-	
+
 decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/little-signed, Op:32/little-signed, Message/binary>>) ->
 	MsgLen = Length - 16,
-	if 
+	if
 		byte_size(Message) < MsgLen ->
 			undefined;
 		true ->
 			DocLen = MsgLen - 20,
-			<<RespFlag:32/little-signed, 
-			  CursorID:64/little-signed, 
-			  StartingFrom:32/little-signed, 
-			  NumRet:32/little-signed, 
+			<<RespFlag:32/little-signed,
+			  CursorID:64/little-signed,
+			  StartingFrom:32/little-signed,
+			  NumRet:32/little-signed,
 			  Documents:DocLen/binary,
 			  Tail/binary>> = Message,
 			Resp = #response{
-				header = {header, Length, ReqID, RespTo, Op}, 
-				response_flag = RespFlag, 
-				cursor_id = CursorID, 
-				offset = StartingFrom, 
-				limit = NumRet, 
+				header = {header, Length, ReqID, RespTo, Op},
+				response_flag = RespFlag,
+				cursor_id = CursorID,
+				offset = StartingFrom,
+				limit = NumRet,
 				documents = Documents
 			},
 			{Resp, Tail}
