@@ -211,7 +211,7 @@ find_and_modify(PoolId, Collection, Selector, Update, Options)
     Collection1 = unicode:characters_to_binary(Collection),
     OptionsDoc = fam_options(Options, [{<<"query">>, Selector1},
                                        {<<"update">>, Update}]),
-    Query = #emo_query{q=[{<<"findAndModify">>, Collection1} | OptionsDoc],
+    Query = #emo_query{q=[{<<"findandmodify">>, Collection1} | OptionsDoc],
                        limit=1},
     Packet = emongo_packet:do_query(Pool#pool.database, "$cmd",
                                     Pool#pool.req_id, Query),
