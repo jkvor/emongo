@@ -434,23 +434,24 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'EXIT', Pid, {PoolId, tcp_closed}}, #state{pools=Pools}=State) ->
-	io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
-	State1 =
-		case get_pool(PoolId, Pools) of
-			undefined ->
-				State;
-			{Pool, Others} ->
-				Pids1 = queue:filter(fun(Item) -> Item =/= Pid end, Pool#pool.conn_pids),
-				Pool1 = Pool#pool{conn_pids = Pids1},
+    io:format("EXIT ~p, {~p, tcp_closed}~n", [Pid, PoolId]),
+    State1 =
+        case get_pool(PoolId, Pools) of
+            undefined ->
+                State;
+            {Pool, Others} ->
+                Pids1 = queue:filter(fun(Item) -> Item =/= Pid end,
+                                     Pool#pool.conn_pids),
+                Pool1 = Pool#pool{conn_pids = Pids1},
                 case do_open_connections(Pool1) of
                     {error, _Reason} ->
                         Pools1 = Others;
                     Pool2 ->
                         Pools1 = [{PoolId, Pool2}|Others]
                 end,
-				State#state{pools=Pools1}
-		end,
-	{noreply, State1};
+                State#state{pools=Pools1}
+        end,
+    {noreply, State1};
 
 handle_info(_Info, State) ->
     {noreply, State}.
