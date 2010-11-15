@@ -1,7 +1,5 @@
-% -*- mode: erlang -*-
-
-{[ 'src/*' ], 
- [ {i, "include"},
-   {outdir, "ebin"},
-   debug_info ]
-}.
+{"src/*", [
+	debug_info,
+	{i, "include/"},
+	{outdir, "ebin/"}
+]}.

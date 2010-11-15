@@ -1,8 +1,9 @@
 #### The goal of emongo is to be stable, fast and easy to use.
 
-## Build
+## Compile and install
 
 	make
+	sudo make install
 	
 ## Start emongo
 
@@ -42,7 +43,7 @@ start the app and then add as many pools as you like
 	
 ## API Type Reference
 
-__PoolId__ = atom()  
+__PoolName__ = atom()  
 __Host__ = string()  
 __Port__ = integer()  
 __Database__ = string()  
@@ -56,17 +57,17 @@ __BinSubType__ = integer() <http://www.mongodb.org/display/DOCS/BSON#BSON-noteon
 
 ## Add Pool
 
-	emongo:add_pool(PoolId, Host, Port, Database, PoolSize) -> ok
+	emongo:add_pool(PoolName, Host, Port, Database, PoolSize) -> ok
 
 ## Insert
 
-__PoolId__ = atom()  
+__PoolName__ = atom()  
 __CollectionName__ = string()  
 __Document__ = [{Key, Val}]  
 __Documents__ = [Document]  
 
-	emongo:insert(PoolId, CollectionName, Document) -> ok
-	emongo:insert(PoolId, CollectionName, Documents) -> ok
+	emongo:insert(PoolName, CollectionName, Document) -> ok
+	emongo:insert(PoolName, CollectionName, Documents) -> ok
 	
 ### Examples
 
@@ -78,15 +79,15 @@ __Documents__ = [Document]
 
 ## Update
 
-__PoolId__ = atom()  
+__PoolName__ = atom()  
 __CollectionName__ = string()  
 __Selector__ = Document  
 __Document__ = [{Key, Val}]  
 __Upsert__ = true | false (insert a new document if the selector does not match an existing document)
 
 	%% by default upsert == false
-	emongo:update(PoolId, CollectionName, Selector, Document) -> ok
-	emongo:update(PoolId, CollectionName, Selector, Document, Upsert) -> ok
+	emongo:update(PoolName, CollectionName, Selector, Document) -> ok
+	emongo:update(PoolName, CollectionName, Selector, Document, Upsert) -> ok
 	
 ### Examples
 
@@ -95,15 +96,15 @@ __Upsert__ = true | false (insert a new document if the selector does not match 
 
 ## Delete
 
-__PoolId__ = atom()  
+__PoolName__ = atom()  
 __CollectionName__ = string()  
 __Selector__ = Document  
 
 	%% delete all documents in a collection
-	emongo:delete(PoolId, CollectionName) -> ok
+	emongo:delete(PoolName, CollectionName) -> ok
 	
 	%% delete all documents in a collection that match a selector
-	emongo:delete(PoolId, CollectionName, Selector) -> ok
+	emongo:delete(PoolName, CollectionName, Selector) -> ok
 	
 ## Find
 	
@@ -117,9 +118,9 @@ __Fields__ = [Key] = specifies a list of fields to return in the result set
 __response_options__ = return #response{header, response_flag, cursor_id, offset, limit, documents}  
 __Result__ = [Document] | response()  
 	
-	emongo:find(PoolId, CollectionName) -> Result
-	emongo:find(PoolId, CollectionName, Selector) -> Result
-	emongo:find(PoolId, CollectionName, Selector, Options) -> Result
+	emongo:find(PoolName, CollectionName) -> Result
+	emongo:find(PoolName, CollectionName, Selector) -> Result
+	emongo:find(PoolName, CollectionName, Selector, Options) -> Result
 	
 ### Examples
 

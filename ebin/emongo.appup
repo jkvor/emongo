@@ -1,0 +1,24 @@
+{"0.0.5",
+ [{"0.0.4", [
+             {add_module, pqueue},
+             {load_module, emongo_sup},
+             {load_module, emongo_server},
+             {load_module, emongo_router},
+             {load_module, emongo_bson},
+             {load_module, emongo},
+             {update, emongo_pool, {advanced, []}},
+             {delete_module, emongo_collection}
+            ]}
+ ],
+ [{"0.0.4", [
+             {delete_module, pqueue},
+             {load_module, emongo_sup},
+             {load_module, emongo_server},
+             {load_module, emongo_router},
+             {load_module, emongo_bson},
+             {load_module, emongo},
+             {load_module, emongo_pool},
+             {add_module, emongo_collection}
+            ]}
+ ]
+}.
