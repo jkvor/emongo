@@ -29,7 +29,8 @@
 
 -export([fold_all/6,
          find_all/2, find_all/3, find_all/4,
-         find_one/3, find_one/4]).
+         find_one/3, find_one/4,
+         find_and_modify/5]).
 
 -export([insert/3, update/4, update/5, delete/2, delete/3]).
 
@@ -157,6 +158,26 @@ find_all_seq(Collection, Selector, Options) ->
      end].
 
 %%------------------------------------------------------------------------------
+%% find_and_modify
+%%------------------------------------------------------------------------------
+find_and_modify(PoolId, Collection, Selector, Update, Options) ->
+    Selector1 = transform_selector(Selector),
+    Collection1 = unicode:characters_to_binary(Collection),
+    OptionsDoc = fam_options(Options, [{<<"query">>, Selector1},
+                                       {<<"update">>, Update}]),
+    Query = #emo_query{q=[{<<"findandmodify">>, Collection1} | OptionsDoc],
+                       limit=1},
+    {Pid, Database, ReqId} = get_pid_pool(PoolId, 1),
+    Packet = emongo_packet:do_query(Database, "$cmd",
+                                    ReqId, Query),
+    Resp = emongo_conn:send_recv(Pid, ReqId, Packet,
+        proplists:get_value(timeout, Options, ?TIMEOUT)),
+    case lists:member(response_options, Options) of
+        true -> Resp;
+        false -> Resp#response.documents
+    end.
+
+%%------------------------------------------------------------------------------
 %% fold_all
 %%------------------------------------------------------------------------------
 fold_all(F, Value, PoolId, Collection, Selector, Options) ->
@@ -180,27 +201,6 @@ fold_all_seq(F, Value, Collection, Selector, Options) ->
                      NewValue
              end
      end].
-%%------------------------------------------------------------------------------
-%% find_and_modify
-%%------------------------------------------------------------------------------
-find_and_modify(PoolId, Collection, Selector, Update, Options)
-  when ?IS_DOCUMENT(Selector), ?IS_DOCUMENT(Update), is_list(Options) ->
-    {Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-    Selector1 = transform_selector(Selector),
-    Collection1 = unicode:characters_to_binary(Collection),
-    OptionsDoc = fam_options(Options, [{<<"query">>, Selector1},
-                                       {<<"update">>, Update}]),
-    Query = #emo_query{q=[{<<"findandmodify">>, Collection1} | OptionsDoc],
-                       limit=1},
-    Packet = emongo_packet:do_query(Pool#pool.database, "$cmd",
-                                    Pool#pool.req_id, Query),
-    Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet,
-        proplists:get_value(timeout, Options, ?TIMEOUT)),
-    case lists:member(response_options, Options) of
-        true -> Resp;
-        false -> Resp#response.documents
-    end.
-
 
 fold_more(_F, Value, _Collection, #response{cursor_id=0}, _Timeout) ->
     Value;
