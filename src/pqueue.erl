@@ -68,7 +68,7 @@ filter(_, #pqueue{size = 0} = Q) ->
 filter(Fun, #pqueue{head = Head, tails = Tails}) ->
     NewHead = [I || I <- Head, Fun(I)],
     NewTails = filter_tails(Fun, Tails),
-    
+
     NewSize = length(Head) + lists:sum([length(Items) || {_, Items} <- NewTails]),
     #pqueue{size = NewSize, head = NewHead, tails = NewTails}.
 

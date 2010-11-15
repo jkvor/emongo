@@ -133,7 +133,7 @@ process_bin(State, Bin) ->
     case emongo_packet:decode_response(Bin) of
         undefined ->
             State#state{leftover=Bin};
-        
+
         {Resp, Tail} ->
             ResponseTo = (Resp#response.header)#header.response_to,
 
@@ -141,7 +141,7 @@ process_bin(State, Bin) ->
                 false ->
                     cleanup_cursor(Resp, ResponseTo, State),
                     process_bin(State, Tail);
-                
+
                 {value, {_, From}, Requests} ->
                     case is_aborted(ResponseTo) of
                         false ->

@@ -22,7 +22,7 @@
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(emongo_packet).
 
--export([update/6, insert/4, do_query/4, get_more/5, 
+-export([update/6, insert/4, do_query/4, get_more/5,
 		 delete/4, kill_cursors/2, msg/2, decode_response/1,
 		 ensure_index/4, get_last_error/2, server_status/2]).
 
@@ -132,10 +132,10 @@ decode_response(<<Length:32/little-signed, ReqID:32/little-signed, RespTo:32/lit
                                                  request_id = ReqID,
                                                  response_to = RespTo,
                                                  op_code = Op},
-				response_flag = RespFlag, 
-				cursor_id = CursorID, 
-				offset = StartingFrom, 
-				limit = NumRet, 
+				response_flag = RespFlag,
+				cursor_id = CursorID,
+				offset = StartingFrom,
+				limit = NumRet,
 				documents = Documents
 			},
 			{Resp, Tail}

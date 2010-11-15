@@ -64,14 +64,14 @@ pid(Pid, RequestCount) ->
 %%--------------------------------------------------------------------
 init([PoolId, Host, Port, Database, Size]) ->
     process_flag(trap_exit, true),
-    
+
     Pool0 = #pool{id = PoolId,
-                 host = Host,
-                 port = Port,
-                 database = unicode:characters_to_binary(Database),
-                 size = Size
-                },
-    
+                  host = Host,
+                  port = Port,
+                  database = unicode:characters_to_binary(Database),
+                  size = Size
+                 },
+
     {noreply, Pool} = handle_info(?poll(), Pool0),
     {ok, Pool}.
 
@@ -113,7 +113,7 @@ handle_cast(_Msg, State) ->
 handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
     error_logger:error_msg("Pool ~p deactivated by worker death: ~p~n",
                            [State#pool.id, Reason]),
-    
+
     Pids1 = pqueue:filter(fun(Item) -> Item =/= Pid end, Pids),
     {noreply, State#pool{conn_pid = Pids1, active=false}};
 
@@ -138,7 +138,7 @@ handle_info({Tag, _}, #pool{poll={Tag, TimerRef}}=State) ->
 handle_info(Info, State) ->
     error_logger:info_msg("Pool ~p unknown message: ~p~n",
                            [State#pool.id, Info]),
-    
+
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -157,14 +157,14 @@ terminate(_Reason, _State) ->
 %%--------------------------------------------------------------------
 code_change(OldVsn, State, _Extra) ->
     error_logger:info_msg("emongo_pool:code_change(~p, ...)~n", [OldVsn]),
-    
+
     State1 = case queue:is_queue(State#pool.conn_pid) of
                  false ->
                      State;
                  true ->
                      State#pool{conn_pid = queue2pqueue(State#pool.conn_pid, pqueue:new())}
              end,
-    
+
     {ok, State1}.
 
 %%--------------------------------------------------------------------
@@ -188,7 +188,7 @@ get_pid(#pool{database=Database, conn_pid=Pids, req_id=ReqId}=State, RequestCoun
             {undefined, State}
     end.
 
-do_open_connections(#pool{conn_pid=Pids, size=Size}=Pool) -> 
+do_open_connections(#pool{conn_pid=Pids, size=Size}=Pool) ->
     case pqueue:size(Pids) < Size of
         true ->
             case emongo_server:start_link(Pool#pool.id, Pool#pool.host, Pool#pool.port) of

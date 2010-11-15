@@ -150,7 +150,7 @@ find_all(PoolId, Collection, Selector, Options) ->
 
 find_all_seq(Collection, Selector, Options) ->
     [Fun0,Fun1] = fold_all_seq(fun(I, A) -> [I | A] end, [], Collection, Selector, Options),
-    
+
     [Fun0,
      fun(Pid, Database, ReqId) ->
              lists:reverse(Fun1(Pid, Database, ReqId))
@@ -170,7 +170,7 @@ fold_all_seq(F, Value, Collection, Selector, Options) ->
      fun(Pid, Database, ReqId) ->
              Packet = emongo_packet:do_query(Database, Collection, ReqId, Query),
              Resp = emongo_server:send_recv(Pid, ReqId, Packet, Timeout),
-             
+
              NewValue = fold_documents(F, Value, Resp),
              case Query#emo_query.limit of
                  0 ->
@@ -475,6 +475,25 @@ create_query([explain | Options], QueryRec, QueryDoc, OptDoc) ->
 
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
     create_query(Options, QueryRec, QueryDoc, OptDoc).
+
+fam_options([], OptDoc) -> OptDoc;
+fam_options([{sort, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{remove, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{update, _} | Options], OptDoc) ->
+    fam_options(Options, OptDoc); % update is a param to find_and_modify/5
+fam_options([{new, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{fields, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{upsert, _}=Opt | Options], OptDoc) ->
+    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([_ | Options], OptDoc) ->
+    fam_options(Options, OptDoc).
+
+opt({Atom, Val}) when is_atom(Atom) ->
+    {list_to_binary(atom_to_list(Atom)), Val}.
 
 transform_selector(Selector) ->
     transform_selector(Selector, []).

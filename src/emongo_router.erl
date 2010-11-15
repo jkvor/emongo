@@ -87,7 +87,7 @@ handle_call(stop_children, _, #state{id=BalId, active=Active, passive=Passive}=S
           end,
     lists:foreach(Fun, Passive),
     lists:foreach(Fun, Active),
-    
+
     {reply, ok, State#state{active=[], passive=[]}};
 
 handle_call(_Request, _From, State) ->
@@ -156,7 +156,7 @@ get_pid(#state{id=BalId, active=Active, passive=Passive, timer=Timer}=State, Poo
             case emongo_sup:worker_pid(?POOL_ID(BalId, PoolIdx), Pools, RequestCount) of
                 undefined ->
                     error_logger:info_msg("pool ~p is disabled!~n", [?POOL_ID(BalId, PoolIdx)]),
-                    
+
                     get_pid(State#state{active=Active2,
                                         passive=[PoolIdx | Passive],
                                         timer=set_timer(Timer)
