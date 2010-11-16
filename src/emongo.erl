@@ -170,7 +170,7 @@ find_and_modify(PoolId, Collection, Selector, Update, Options) ->
     {Pid, Database, ReqId} = get_pid_pool(PoolId, 1),
     Packet = emongo_packet:do_query(Database, "$cmd",
                                     ReqId, Query),
-    Resp = emongo_conn:send_recv(Pid, ReqId, Packet,
+    Resp = emongo_server:send_recv(Pid, ReqId, Packet,
         proplists:get_value(timeout, Options, ?TIMEOUT)),
     case lists:member(response_options, Options) of
         true -> Resp;
