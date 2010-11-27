@@ -8,6 +8,7 @@ all: src
 
 src: FORCE
 	@erl -make
+	@cp src/${PKGNAME}.app.src ebin/${PKGNAME}.app
 
 test: src
 	prove t/*.t
@@ -21,8 +22,9 @@ package: clean
 	@rm -rf $(PKGNAME)-$(VERSION)/
 
 install: src
-	@mkdir -p $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/{ebin,include}
-	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(prefix)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
+	@mkdir -p $(LIBDIR)/$(PKGNAME)-$(VERSION)/ebin
+	@mkdir -p $(LIBDIR)/$(PKGNAME)-$(VERSION)/include
+	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
 
 
 plt: src
