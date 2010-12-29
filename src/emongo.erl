@@ -1,6 +1,7 @@
 %% Copyright (c) 2009 Jacob Vorreuter <jacob.vorreuter@gmail.com>
 %% Jacob Perkins <japerk@gmail.com>
 %% Belyaev Dmitry <rumata-estor@nm.ru>
+%% François de Metz <fdemetz@af83.com>
 %%
 %% Permission is hereby granted, free of charge, to any person
 %% obtaining a copy of this software and associated documentation
@@ -43,6 +44,8 @@
          insert_seq/3, update_seq/5, delete_seq/3]).
 
 -export([update_sync/5, delete_sync/3, insert_sync/3]).
+
+-export([drop_database/1]).
 
 -deprecated([update_sync/5, delete_sync/3]).
 
@@ -323,6 +326,15 @@ distinct(PoolId, Collection, Key, Selector) ->
         _ ->
             undefined
     end.
+
+%%------------------------------------------------------------------------------
+%% drop database
+%%------------------------------------------------------------------------------
+drop_database(PoolId) ->
+    {Pid, Database, ReqId} = get_pid_pool(PoolId, 1),
+    Query = #emo_query{q=[{<<"dropDatabase">>, 1}], limit=1},
+    Packet = emongo_packet:do_query(Database, "$cmd", ReqId, Query),
+    emongo_server:send(Pid, ReqId, Packet).
 
 %%====================================================================
 %% gen_server callbacks
