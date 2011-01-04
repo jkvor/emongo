@@ -29,7 +29,7 @@ main(_) ->
 
     %% LIMIT && ORDERBY
     (fun() ->
-             Docs = emongo:find(test1, "sushi", [], [{limit, 1}, {orderby, [{"rolls", asc}]}, {fields, [<<"rolls">>]}]),
+             Docs = emongo:find_all(test1, "sushi", [], [{limit, 1}, {orderby, [{"rolls", asc}]}, {fields, [<<"rolls">>]}]),
              etap:is(length(Docs), 1, "limit returns one document"),
              etap:is(length(hd(Docs)), 2, "correct number of fields"),
              etap:is(lists:nth(2, hd(Docs)), {<<"rolls">>, 1}, "returned correct document from limit query"),
@@ -38,14 +38,14 @@ main(_) ->
 
     %% LIMIT && OFFSET && ORDERBY
     (fun() ->
-             Docs = emongo:find(test1, "sushi", [], [{limit, 1}, {offset, 1}, {orderby, [{"rolls", desc}]}]),
+             Docs = emongo:find_all(test1, "sushi", [], [{limit, 1}, {offset, 1}, {orderby, [{"rolls", desc}]}]),
              etap:is(length(Docs), 1, "limit returns one document"),
              etap:is(lists:nth(2, hd(Docs)), {<<"rolls">>, 999}, "returned correct document from offset query"),
              ok
      end)(),
 
     (fun() ->
-             Docs = emongo:find(test1, "sushi", [{"rolls", 100}], [{orderby, [{"rolls", desc}]}]),
+             Docs = emongo:find_all(test1, "sushi", [{"rolls", 100}], [{orderby, [{"rolls", desc}]}]),
              etap:is(proplists:get_value(<<"rolls">>, hd(Docs)), 100, "query returned correct value"),
              ok
      end)(),
@@ -54,7 +54,7 @@ main(_) ->
     [emongo:insert(test1, "sushi", [{<<"seaweed">>, [{<<"sheets">>, I}]}]) || I <- lists:seq(1,10)],
 
     (fun() ->
-             Docs = emongo:find(test1, "sushi", [{"seaweed.sheets", 5}]),
+             Docs = emongo:find_all(test1, "sushi", [{"seaweed.sheets", 5}]),
              etap:is(length(Docs), 1, "correct number of results from nested query"),
              etap:is(proplists:get_value(<<"seaweed">>, hd(Docs)), [{<<"sheets">>, 5}], "correct result returned"),
              ok
