@@ -194,6 +194,11 @@ __nested queries__
 	%% ie: [{"address", [{"street", "Maple Drive"}, {"zip", 94114}]
 	emongo:find_all(test, "people", [{"address.street", "Maple Drive"}]).
 
+## Drop database
+
+	%% drop current database
+	emongo:drop_database(PoolName) -> ok
+
 ## Tests
 
 Ensure you have [etap](https://github.com/ngerakines/etap) and [couchdb](http://couchdb.apache.org/).
