@@ -8,7 +8,7 @@ main(_) ->
     etap_application:start_ok(emongo, "application 'emongo' started ok"),
 
 	emongo:delete(test1, "sushi"),
-	etap:is(emongo:find(test1, "sushi"), [], "sushi collection is empty"),
+	etap:is(emongo:find_all(test1, "sushi"), [], "sushi collection is empty"),
 	
 	[emongo:insert(test1, "sushi", [{<<"rolls">>, I}, {<<"uni">>, <<"nigiri">>}]) || I <- lists:seq(1, 1000)],
 	
