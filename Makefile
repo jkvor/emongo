@@ -14,7 +14,7 @@ test: src
 	prove t/*.t
 
 clean:
-	rm -rf erl_crash.dump *.boot *.rel *.script ebin/*.beam
+	rm -rf erl_crash.dump *.boot *.rel *.script ebin/*.beam ebin/emongo.app
 
 package: clean
 	@mkdir $(PKGNAME)-$(VERSION)/ && cp -rf ebin include Emakefile Makefile priv README.markdown src t $(PKGNAME)-$(VERSION)
