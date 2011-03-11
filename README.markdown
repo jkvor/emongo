@@ -84,10 +84,12 @@ __CollectionName__ = string()
 __Selector__ = Document  
 __Document__ = [{Key, Val}]  
 __Upsert__ = true | false (insert a new document if the selector does not match an existing document)
+__MultiUpdate__ = true | false (if all documents matching selector should be updated)
 
-	%% by default upsert == false
+	%% by default upsert == false and multiupdate == false
 	emongo:update(PoolName, CollectionName, Selector, Document) -> ok
 	emongo:update(PoolName, CollectionName, Selector, Document, Upsert) -> ok
+	emongo:update(PoolName, CollectionName, Selector, Document, Upsert, MultiUpdate) -> ok
 
 ### Examples
 
