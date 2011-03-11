@@ -39,6 +39,12 @@ start_pool(PoolId, Host, Port, Database, Size) ->
 	}).
 
 
+stop_pool(PoolPid) when is_pid(PoolPid) ->
+    case [PoolId || {PoolId, Pid,_,_} <- supervisor:which_children(?MODULE), Pid =:= PoolPid] of
+     	[PoolId] -> stop_pool(PoolId);
+     	_ -> {error, not_found}
+    end;
+
 stop_pool(PoolId) ->
     supervisor:terminate_child(?MODULE, PoolId),
     supervisor:delete_child(?MODULE, PoolId).
@@ -51,6 +57,14 @@ pools() ->
 worker_pid(PoolId, Pools) ->
     worker_pid(PoolId, Pools, 1).
 
+
+worker_pid(PoolPid, Pools, RequestCount) when is_pid(PoolPid) ->
+    case lists:keyfind(PoolPid, 2, Pools) of
+        {_, Pid, Module} ->
+            Module:pid(Pid, RequestCount);
+        _ ->
+            undefined
+    end;
 
 worker_pid(PoolId, Pools, RequestCount) ->
     case lists:keyfind(PoolId, 1, Pools) of
