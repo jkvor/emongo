@@ -33,7 +33,7 @@
          find_one/3, find_one/4,
          find_and_modify/5]).
 
--export([insert/3, update/4, update/5, delete/2, delete/3]).
+-export([insert/3, update/4, update/5, update/6, delete/2, delete/3]).
 
 -export([ensure_index/3, count/2, count/3, distinct/3, distinct/4]).
 
@@ -41,7 +41,7 @@
 
 -export([sequence/2, synchronous/0, no_response/0,
          find_all_seq/3, fold_all_seq/5,
-         insert_seq/3, update_seq/5, delete_seq/3]).
+         insert_seq/3, update_seq/6, delete_seq/3]).
 
 -export([update_sync/5, delete_sync/3, insert_sync/3]).
 
@@ -251,18 +251,21 @@ update(PoolId, Collection, Selector, Document) ->
     update(PoolId, Collection, Selector, Document, false).
 
 update(PoolId, Collection, Selector, Document, Upsert) ->
-    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, no_response())).
+    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, false, no_response())).
 
+update(PoolId, Collection, Selector, Document, Upsert, MultiUpdate) ->
+    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, MultiUpdate, no_response())).
 
-update_seq(Collection, Selector, Document, Upsert, Next) ->
+update_seq(Collection, Selector, Document, Upsert, MultiUpdate, Next) ->
     [fun(Pid, Database, ReqId) ->
-             Packet = emongo_packet:update(Database, Collection, ReqId, Upsert, Selector, Document),
+	     Packet = emongo_packet:update(Database, Collection, ReqId, Upsert, MultiUpdate, 
+					   transform_selector(Selector), Document),
              emongo_server:send(Pid, Packet)
      end | Next].
 
 
 update_sync(PoolId, Collection, Selector, Document, Upsert) ->
-    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, synchronous())).
+    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, false, synchronous())).
 
 %%------------------------------------------------------------------------------
 %% delete
