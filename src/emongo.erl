@@ -43,7 +43,7 @@
          find_all_seq/3, fold_all_seq/5,
          insert_seq/3, update_seq/6, delete_seq/3]).
 
--export([update_sync/5, delete_sync/3, insert_sync/3]).
+-export([update_sync/5, update_sync/6, delete_sync/3, insert_sync/3]).
 
 -export([drop_database/1]).
 
@@ -266,6 +266,9 @@ update_seq(Collection, Selector, Document, Upsert, MultiUpdate, Next) ->
 
 update_sync(PoolId, Collection, Selector, Document, Upsert) ->
     sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, false, synchronous())).
+
+update_sync(PoolId, Collection, Selector, Document, Upsert, MultiUpdate) ->
+    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, MultiUpdate, synchronous())).
 
 %%------------------------------------------------------------------------------
 %% delete
