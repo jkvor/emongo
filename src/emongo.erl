@@ -251,16 +251,18 @@ update(PoolId, Collection, Selector, Document) ->
     update(PoolId, Collection, Selector, Document, false).
 
 update(PoolId, Collection, Selector, Document, Upsert) ->
-    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, false, no_response())).
+    update(PoolId, Collection, Selector, Document, Upsert, false).
 
 update(PoolId, Collection, Selector, Document, Upsert, MultiUpdate) ->
-    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, MultiUpdate, no_response())).
+    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert,
+                                MultiUpdate, no_response())).
 
 update_seq(Collection, Selector, Document, Upsert, MultiUpdate, Next) ->
     [fun(Pid, Database, ReqId) ->
-	     Packet = emongo_packet:update(Database, Collection, ReqId, Upsert, MultiUpdate, 
-					   transform_selector(Selector), Document),
-             emongo_server:send(Pid, Packet)
+         Packet = emongo_packet:update(Database, Collection, ReqId, Upsert,
+                                       MultiUpdate,
+                                       transform_selector(Selector), Document),
+         emongo_server:send(Pid, Packet)
      end | Next].
 
 
