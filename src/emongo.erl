@@ -267,7 +267,7 @@ update_seq(Collection, Selector, Document, Upsert, MultiUpdate, Next) ->
 
 
 update_sync(PoolId, Collection, Selector, Document, Upsert) ->
-    sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, false, synchronous())).
+    update_sync(PoolId, Collection, Selector, Document, Upsert, false).
 
 update_sync(PoolId, Collection, Selector, Document, Upsert, MultiUpdate) ->
     sequence(PoolId, update_seq(Collection, Selector, Document, Upsert, MultiUpdate, synchronous())).
