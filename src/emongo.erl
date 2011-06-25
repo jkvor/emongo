@@ -555,7 +555,7 @@ transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
 				{<<"$in">>, {array, Val}};
 			nin when is_list(Val) -> 
 				{<<"$nin">>, {array, Val}};
-			mod when is_list(Val), length(Val) == 2 -> 
+			mod when is_list(Val), length(Val) == 2 ->
 				{<<"$mod">>, {array, Val}};
 			all when is_list(Val) ->
 				{<<"$all">>, {array, Val}};
@@ -563,6 +563,8 @@ transform_selector([{Key, [{_,_}|_]=Vals}|Tail], Acc) ->
 				{<<"$size">>, Val};
 			exists when is_boolean(Val) ->
 				{<<"$exists">>, Val};
+			near when is_list(Val) -> 
+				{<<"$near">>, {array, Val}};
 			_ -> 
 				{Operator, Val}
 		 end || {Operator, Val} <- Vals],
