@@ -1,0 +1,13 @@
+Source: emongo
+Section: libs
+Priority: extra
+Maintainer: Oleg Smirnov <oleg.smirnov@gmail.com>
+Build-Depends: debhelper (>= 7.3~), erlang-base
+Standards-Version: 3.9.1
+Homepage: https://github.com/master/emongo
+
+Package: emongo
+Architecture: any
+Depends: erlang
+Suggests: mongodb
+Description: the most Emo of mongo drivers
