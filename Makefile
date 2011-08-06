@@ -22,9 +22,9 @@ package: clean
 	@rm -rf $(PKGNAME)-$(VERSION)/
 
 install: src
-	@mkdir -p $(LIBDIR)/$(PKGNAME)-$(VERSION)/ebin
-	@mkdir -p $(LIBDIR)/$(PKGNAME)-$(VERSION)/include
-	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
+	@mkdir -p $(DESTDIR)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/ebin
+	@mkdir -p $(DESTDIR)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/include
+	for i in ebin/*.beam include/*.hrl ebin/*.app; do install $$i $(DESTDIR)/$(LIBDIR)/$(PKGNAME)-$(VERSION)/$$i ; done
 
 
 plt: src
