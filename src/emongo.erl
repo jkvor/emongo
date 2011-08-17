@@ -35,7 +35,8 @@
 
 -export([insert/3, update/4, update/5, update/6, delete/2, delete/3]).
 
--export([ensure_index/3, count/2, count/3, distinct/3, distinct/4]).
+-export([ensure_index/3, ensure_index/4, count/2, count/3, distinct/3,
+         distinct/4]).
 
 -export([dec2hex/1, hex2dec/1]).
 
@@ -298,8 +299,11 @@ delete_sync(PoolId, Collection, Selector) ->
 %%------------------------------------------------------------------------------
 %% ensure_index(pool, "collection", [{"fieldname1", 1}, {"fieldname2", -1}]).
 ensure_index(PoolId, Collection, Keys) ->
+    ensure_index(PoolId, Collection, Keys, false).
+
+ensure_index(PoolId, Collection, Keys, Unique) ->
     {Pid, Database, ReqId} = get_pid_pool(PoolId, 1),
-    Packet = emongo_packet:ensure_index(Database, Collection, ReqId, Keys),
+    Packet = emongo_packet:ensure_index(Database, Collection, ReqId, Keys, Unique),
     emongo_server:send(Pid, Packet).
 
 
