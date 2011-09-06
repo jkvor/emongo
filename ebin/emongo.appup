@@ -1,3 +1,9 @@
+{"0.2.2",
+ [{"0.0.5", [{load_module, emongo},
+             {load_module, emongo_packet}]}],
+ [{"0.0.5", [{load_module, emongo},
+             {load_module, emongo_packet}]}],
+}.
 {"0.0.5",
  [{"0.0.4", [
              {add_module, pqueue},
