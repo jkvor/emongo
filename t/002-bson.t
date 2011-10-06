@@ -63,6 +63,17 @@ main(_) ->
              ok
      end)(),
 
+    %% 6) data_undefined
+    (fun() ->
+             Val = undefined,
+             BinVal = <<>>,
+             Size = size(BinVal) + 8,
+             Encoded = emongo_bson:encode([{<<"a">>, Val}]),
+             etap:is(Encoded, <<Size:32/little-unsigned, 6, 97, 0, BinVal/binary, 0>>, "data_undefined encodes ok"),
+             etap:is(hd(emongo_bson:decode(Encoded)), [{<<"a">>, Val}], "data_null decodes ok"),
+             ok
+     end)(),
+
     %% 7) data_oid
     (fun() ->
              Val1 = {oid, <<255,255,255,255,255,255,255,255,255,255,255,255>>},
@@ -108,7 +119,7 @@ main(_) ->
 
     %% 10) data_null
     (fun() ->
-             Val = undefined,
+             Val = null,
              BinVal = <<>>,
              Size = size(BinVal) + 8,
              Encoded = emongo_bson:encode([{<<"a">>, Val}]),
