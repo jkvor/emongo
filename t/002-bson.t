@@ -5,7 +5,7 @@
 main(_) ->
     etap:plan(unknown),
     error_logger:tty(false),
-    etap_application:start_ok(emongo, "application 'emongo' started ok"),
+    etap:ok(application:start(emongo) == ok, "application 'emongo' started ok"),
 
     %% 1) data_number
     (fun() ->
