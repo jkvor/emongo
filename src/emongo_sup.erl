@@ -52,7 +52,7 @@ stop_pool(PoolId) ->
 
 pools() ->
     [{Id, Pid, Module} || {Id, Pid, _, [Module]}
-                              <- supervisor:which_children(?MODULE)].
+                              <- supervisor:which_children(?MODULE), Module == emongo_pool].
 
 worker_pid(PoolId, Pools) ->
     worker_pid(PoolId, Pools, 1).
