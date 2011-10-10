@@ -5,7 +5,7 @@
 main(_) ->
     etap:plan(unknown),
     error_logger:tty(false),
-    etap_application:start_ok(emongo, "application 'emongo' started ok"),
+    etap:ok(application:start(emongo) == ok, "application 'emongo' started ok"),
 
     emongo:delete(test1, "sushi"),
     etap:is(emongo:find_all(test1, "sushi"), [], "sushi collection is empty"),

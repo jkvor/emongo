@@ -203,6 +203,10 @@ __nested queries__
 
 ## Tests
 
-Ensure you have [etap](https://github.com/ngerakines/etap) and [couchdb](http://couchdb.apache.org/).
+Ensure you have [etap](https://github.com/ngerakines/etap).
+
+    git clone https://github.com/ngerakines/etap.git
+    cd etap && make && cd ..
+    export ERL_LIBS="etap"
 
     make test

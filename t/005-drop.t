@@ -5,7 +5,7 @@
 main(_) ->
     etap:plan(unknown),
     error_logger:tty(false),
-    etap_application:start_ok(emongo, "application 'emongo' started ok"),
+    etap:ok(application:start(emongo) == ok, "application 'emongo' started ok"),
 
     [emongo:insert(test1, "sushi", [{<<"rolls">>, I}]) || I <- lists:seq(1, 50)],
     [emongo:insert(test1, "sushi2", [{<<"rolls">>, I}]) || I <- lists:seq(1, 50)],
@@ -13,7 +13,7 @@ main(_) ->
     ok = emongo:drop_database(test1),
 
     emongo:insert(test1, "sushi", [{<<"rolls">>, 1}]),
-    [_] = emongo:find_all(test1, "sushi"),
-    [] = emongo:find_all(test1, "sushi2"),
+    etap:is(length(emongo:find_all(test1, "sushi")), 1, "There is 1 doc"),
+    etap:is(length(emongo:find_all(test1, "sushi2")), 0, "there is 0 doc"),
 
-     etap:end_tests().
+    etap:end_tests().
