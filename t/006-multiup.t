@@ -20,4 +20,6 @@ main(_) ->
              ok
      end)(),
 
+    emongo:delete(test1, "sushi"),
+
     etap:end_tests().

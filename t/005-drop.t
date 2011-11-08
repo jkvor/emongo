@@ -16,4 +16,6 @@ main(_) ->
     etap:is(length(emongo:find_all(test1, "sushi")), 1, "There is 1 doc"),
     etap:is(length(emongo:find_all(test1, "sushi2")), 0, "there is 0 doc"),
 
+    emongo:delete(test1, "sushi"),
+
     etap:end_tests().

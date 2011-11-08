@@ -15,49 +15,49 @@ main(_) ->
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{gt, 45}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 5, "correct number of results from gt query"),
-             etap:is([I || [_, {_, I}] <- Docs], [46,47,48,49,50], "correct results from gt query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [46,47,48,49,50], "correct results from gt query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{lt, 5}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 4, "correct number of results from lt query"),
-             etap:is([I || [_, {_, I}] <- Docs], [1, 2, 3, 4], "correct results from lt query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [1, 2, 3, 4], "correct results from lt query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{gte, 45}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 6, "correct number of results from gte query"),
-             etap:is([I || [_, {_, I}] <- Docs], [45,46,47,48,49,50], "correct results from gte query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [45,46,47,48,49,50], "correct results from gte query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{lte, 5}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 5, "correct number of results from lte query"),
-             etap:is([I || [_, {_, I}] <- Docs], [1, 2, 3, 4, 5], "correct results from lte query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [1, 2, 3, 4, 5], "correct results from lte query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{ne, 1}, {ne, 50}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 48, "correct number of results from ne query"),
-             etap:is([I || [_, {_, I}] <- Docs], lists:seq(2, 49), "correct results from ne query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), lists:seq(2, 49), "correct results from ne query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{in, [1,2,3,4,5]}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 5, "correct number of results from in query"),
-             etap:is([I || [_, {_, I}] <- Docs], [1,2,3,4,5], "correct results from in query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [1,2,3,4,5], "correct results from in query"),
              ok
      end)(),
 
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"rolls">>, [{nin, [1,2,3,4,5]}]}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 45, "correct number of results from nin query"),
-             etap:is([I || [_, {_, I}] <- Docs], lists:seq(6,50), "correct results from nin query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), lists:seq(6,50), "correct results from nin query"),
              ok
      end)(),
 
@@ -66,7 +66,7 @@ main(_) ->
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"maki">>, [{all, [2,3]}]}], [orderby, [{"maki", asc}]]),
              etap:is(length(Docs), 2, "correct number of results from all query"),
-             etap:is([I || [_, {_, I}] <- Docs], [{array, [1,2,3]}, {array, [2,3,4]}], "correct results from all query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [{array, [1,2,3]}, {array, [2,3,4]}], "correct results from all query"),
              ok
      end)(),
 
@@ -75,7 +75,7 @@ main(_) ->
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{<<"maki">>, [{size, 5}]}], [orderby, [{"maki", asc}]]),
              etap:is(length(Docs), 1, "correct number of results from size query"),
-             etap:is([I || [_, {_, I}] <- Docs], [{array, [1,2,3,4,5]}], "correct results from size query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [{array, [1,2,3,4,5]}], "correct results from size query"),
              ok
      end)(),
 
@@ -94,7 +94,7 @@ main(_) ->
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{where, "this.rolls > 45"}], [orderby, [{"rolls", asc}]]),
              etap:is(length(Docs), 5, "correct number of results from where query"),
-             etap:is([I || [_, {_, I}] <- Docs], [46,47,48,49,50], "correct results from where query"),
+             etap:is(lists:sort([I || [_, {_, I}] <- Docs]), [46,47,48,49,50], "correct results from where query"),
              ok
      end)(),
 
@@ -103,8 +103,10 @@ main(_) ->
     (fun() ->
              Docs = emongo:find_all(test1, "sushi", [{"seaweed.sheets", [{in, [3,4,5]}]}]),
              etap:is(length(Docs), 3, "correct number of results from nested query"),
-             etap:is([I || [_, {<<"seaweed">>, [{<<"sheets">>, I}]}] <- Docs], [3,4,5], "correct results from where query"),
+             etap:is(lists:sort([I || [_, {<<"seaweed">>, [{<<"sheets">>, I}]}] <- Docs]), [3,4,5], "correct results from where query"),
              ok
      end)(),
+
+    emongo:delete(test1, "sushi"),
 
     etap:end_tests().

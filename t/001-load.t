@@ -7,6 +7,6 @@ main(_) ->
     error_logger:tty(false),
     etap:ok(application:start(emongo) == ok, "application 'emongo' started ok"),
 
-    etap:is(length(emongo:pools()), 1, "one pool exists in state"),
+    etap:is(length(emongo:pools()), 2, "two pools exist in state"),
 
     etap:end_tests().
