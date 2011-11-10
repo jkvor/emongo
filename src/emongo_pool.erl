@@ -6,7 +6,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, pid/1, pid/2]).
+-export([start_link/6, pid/1, pid/2]).
 
 -deprecated([pid/1]).
 
@@ -24,6 +24,7 @@
                port,
                database,
                size,
+               auto_reconnect,
                active=true,
                poll=none,
                conn_pid=pqueue:new(),
@@ -42,8 +43,8 @@
 %% public api %%
 %%%%%%%%%%%%%%%%
 
-start_link(PoolId, Host, Port, Database, Size) ->
-    gen_server:start_link(?MODULE, [PoolId, Host, Port, Database, Size], []).
+start_link(PoolId, Host, Port, Database, Size, AutoReconnect) ->
+    gen_server:start_link(?MODULE, [PoolId, Host, Port, Database, Size, AutoReconnect], []).
 
 pid(Pid) ->
     gen_server:call(Pid, pid).
@@ -62,18 +63,21 @@ pid(Pid, RequestCount) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([PoolId, Host, Port, Database, Size]) ->
+init([PoolId, Host, Port, Database, Size, AutoReconnect]) ->
     process_flag(trap_exit, true),
 
     Pool0 = #pool{id = PoolId,
                   host = Host,
                   port = Port,
                   database = unicode:characters_to_binary(Database),
-                  size = Size
+                  size = Size,
+                  auto_reconnect = AutoReconnect
                  },
 
-    {noreply, Pool} = handle_info(?poll(), Pool0),
-    {ok, Pool}.
+    case handle_info(?poll(), Pool0) of
+        {noreply, Pool}           -> {ok, Pool};
+        {stop, Reason, _NewState} -> {stop, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -115,19 +119,21 @@ handle_info({'EXIT', Pid, Reason}, #pool{conn_pid=Pids}=State) ->
                            [State#pool.id, Reason]),
 
     Pids1 = pqueue:filter(fun(Item) -> Item =/= Pid end, Pids),
-    {noreply, State#pool{conn_pid = Pids1, active=false}};
+    NewState = State#pool{conn_pid = Pids1, active=false},
+    check_return_state(NewState);
 
 handle_info(?poll(), State) ->
     erlang:send_after(?POLL_INTERVAL, self(), poll),
     NewState = do_open_connections(State),
-    {noreply, NewState};
+    check_return_state(NewState);
 
 handle_info(?poll_timeout(Pid, ReqId, Tag), #pool{poll={Tag, _}}=State) ->
     case catch emongo_server:recv(Pid, ReqId, 0, Tag) of
         #response{} ->
             {noreply, State#pool{active=true, poll=none}};
         _ ->
-            {noreply, State#pool{active=false, poll=none}}
+            NewState = State#pool{active=false, poll=none},
+            check_return_state(NewState)
     end;
 
 handle_info({Tag, _}, #pool{poll={Tag, TimerRef}}=State) ->
@@ -211,3 +217,8 @@ do_poll(Pool) ->
         _ ->
             Pool#pool{active=false}
     end.
+
+check_return_state(#pool{active=false, auto_reconnect=false}=State) ->
+    {stop, connection_error, State};
+check_return_state(State) ->
+    {noreply, State}.

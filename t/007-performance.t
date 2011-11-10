@@ -94,12 +94,6 @@ block_until_done(X) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-ensure_started(App) ->
-  case application:start(App) of
-    ok -> ok;
-    {error, {already_started, App}} -> ok
-  end.
-
 cur_time_ms() ->
   {MegaSec, Sec, MicroSec} = erlang:now(),
   MegaSec * 1000000000 + Sec * 1000 + erlang:round(MicroSec / 1000).

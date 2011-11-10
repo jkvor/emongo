@@ -26,7 +26,7 @@
 -module(emongo).
 -behaviour(gen_server).
 
--export([pools/0, oid/0, add_pool/5, del_pool/1]).
+-export([pools/0, oid/0, add_pool/5, add_pool/6, del_pool/1]).
 
 -export([fold_all/6,
          find_all/2, find_all/3, find_all/4,
@@ -84,6 +84,9 @@ oid() ->
 
 add_pool(PoolId, Host, Port, Database, Size) ->
     emongo_sup:start_pool(PoolId, Host, Port, Database, Size).
+
+add_pool(PoolId, Host, Port, Database, Size, AutoReconnect) ->
+    emongo_sup:start_pool(PoolId, Host, Port, Database, Size, AutoReconnect).
 
 del_pool(PoolId) ->
     emongo_sup:stop_pool(PoolId).
@@ -509,8 +512,9 @@ fam_options([{update, _} | Options], OptDoc) ->
     fam_options(Options, OptDoc); % update is a param to find_and_modify/5
 fam_options([{new, _}=Opt | Options], OptDoc) ->
     fam_options(Options, [opt(Opt) | OptDoc]);
-fam_options([{fields, _}=Opt | Options], OptDoc) ->
-    fam_options(Options, [opt(Opt) | OptDoc]);
+fam_options([{fields, Fields} | Options], OptDoc) ->
+    NewOpt = [{Field, 1} || Field <- Fields],
+    fam_options(Options, [opt({fields, NewOpt}) | OptDoc]);
 fam_options([{upsert, _}=Opt | Options], OptDoc) ->
     fam_options(Options, [opt(Opt) | OptDoc]);
 fam_options([_ | Options], OptDoc) ->
