@@ -31,21 +31,13 @@ encode([{_,_}|_]=List) when is_list(List) ->
 	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
 	<<(size(Bin)+5):32/little-signed, Bin/binary, 0:8>>.
 
-encode_key_value(none, none) ->
-    <<>>;
-
 %% FLOAT
 encode_key_value(Key, Val) when is_float(Val) ->
 	Key1 = encode_key(Key),
 	<<1, Key1/binary, 0, Val:64/little-signed-float>>;
 
 %% STRING
-%% binary string must be already in utf8
-encode_key_value(Key, Val) when is_binary(Val) ->
-	Key1 = encode_key(Key),
-    <<2, Key1/binary, 0, (byte_size(Val)+1):32/little-signed, Val/binary, 0:8>>;
-
-encode_key_value(Key, Val) when Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
+encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(Val) andalso length(Val) > 0 andalso is_integer(hd(Val))) ->
 	Key1 = encode_key(Key),
 	case unicode:characters_to_binary(Val) of
 		{error, Bin, RestData} ->
@@ -84,11 +76,6 @@ encode_key_value(Key, {binary, SubType, Val}) when is_integer(SubType), is_binar
 encode_key_value(Key, {oid, HexString}) when is_list(HexString) ->
 	encode_key_value(Key, {oid, emongo:hex2dec(HexString)});
 
-%% UNDEFINED
-encode_key_value(Key, undefined) ->
-	Key1 = encode_key(Key),
-	<<6, Key1/binary, 0>>;
-
 encode_key_value(Key, {oid, OID}) when is_binary(OID) ->
 	Key1 = encode_key(Key),
 	<<7, Key1/binary, 0, OID/binary>>;
@@ -119,8 +106,8 @@ encode_key_value(Key, {datetime, Val}) ->
 encode_key_value(Key, {{Year, Month, Day}, {Hour, Min, Secs}}) when is_integer(Year), is_integer(Month), is_integer(Day), is_integer(Hour), is_integer(Min), is_integer(Secs) ->
 	encode_key_value(Key, {datetime, {{Year, Month, Day}, {Hour, Min, Secs}}});
 
-%% NULL
-encode_key_value(Key, null) ->
+%% VOID
+encode_key_value(Key, undefined) ->
 	Key1 = encode_key(Key),
 	<<10, Key1/binary, 0>>;
 
@@ -142,7 +129,7 @@ encode_key_value(Key, Val) when is_integer(Val) ->
 	<<18, Key1/binary, 0, Val:64/little-signed>>;
 
 encode_key_value(Key, Val) ->
-	exit({oh_balls, Key, Val}).
+	exit({emongo_bson_encode_error, Key, Val}).
 
 encode_key(Key) when is_binary(Key) ->
 	Key;
@@ -211,10 +198,6 @@ decode_value(5, <<_Size:32/little-signed, 2:8/little, BinSize:32/little-signed, 
 decode_value(5, <<Size:32/little-signed, SubType:8/little, BinData:Size/binary-little-unit:8, Tail/binary>>) ->
   	{{binary, SubType, BinData}, Tail};
 
-%% VOID
-decode_value(6, Tail) ->
-	{undefined, Tail};
-
 %% OID
 decode_value(7, <<OID:12/binary, Tail/binary>>) ->
 	{{oid, OID}, Tail};
@@ -236,19 +219,15 @@ decode_value(9, <<MSecs:64/little-signed, Tail/binary>>) ->
 
 %% VOID
 decode_value(10, Tail) ->
-	{null, Tail};
+	{undefined, Tail};
 
 %% INT
 decode_value(16, <<Int:32/little-signed, Tail/binary>>) ->
 	{Int, Tail};
 
-%% Timestamp
-decode_value(17, <<Inc:32/little-signed, Timestamp:32/little-signed, Tail/binary>>) ->
-    {{timestamp, Inc, Timestamp}, Tail};
-
 %% LONG
 decode_value(18, <<Int:64/little-signed, Tail/binary>>) ->
 	{Int, Tail};
 
-decode_value(Type, Tail) ->
-	exit({emongo_unknown_type, Type, Tail}).
+decode_value(Type, Value) ->
+	exit({emongo_bson_decode_error, Type, Value}).
