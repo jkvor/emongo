@@ -102,16 +102,13 @@ do_auth(Nonce, Pid, Pool, User, Pass) ->
     Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
 
     Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT),
-    case lists:nth(1, Resp#response.documents) of
-        [{<<"ok">>, 1.0}] ->
-            {ok, authenticated};
-        L ->
-            case lists:keyfind(<<"errmsg">>, 1, L) of
-                false ->
-                    throw(no_error_message);
-                {<<"errmsg">>, Error} ->
-                    throw(Error)
-            end
+    [RespDoc] = Resp#response.documents,
+    case proplists:get_value(<<"ok">>, RespDoc) of
+        1.0 -> {ok, authenticated};
+        _ -> case proplists:get_value(<<"errmsg">>, RespDoc) of
+            undefined -> throw(no_error_message);
+            Error -> throw(Error)
+        end
     end.
 
 getnonce(Pid, Pool) ->
