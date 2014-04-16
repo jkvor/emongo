@@ -6,7 +6,8 @@
 		emongo_app,
 		emongo_bson,
 		emongo_conn,
-		emongo_packet
+		emongo_packet,
+		emongo_utils
     ]},
     {registered, []},
     {mod, {emongo_app, []}},
