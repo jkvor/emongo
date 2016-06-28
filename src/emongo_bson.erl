@@ -30,6 +30,10 @@ encode([]) ->
 encode([{_,_}|_]=List) when is_list(List) ->
 	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
 	<<(size(Bin)+5):32/little-signed, Bin/binary, 0:8>>.
+
+encode_document([{_,_}|_]=List) when is_list(List) ->
+	Bin = iolist_to_binary([encode_key_value(Key, Val) || {Key, Val} <- List]),
+	<<(size(Bin)+5):32/little-signed, Bin/binary>>.
 		
 %% FLOAT
 encode_key_value(Key, Val) when is_float(Val) ->
@@ -45,14 +49,20 @@ encode_key_value(Key, Val) when is_binary(Val) orelse Val == [] orelse (is_list(
 		{incomplete, Bin1, Bin2} ->
 			exit({cannot_convert_chars_to_binary, Val, Bin1, Bin2});
 		Val1 ->
-			<<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>
+            case Key1 of 
+                <<"fields">> ->   
+                    FieldsVal = <<0,0,0,0>>,
+			        <<3, Key1/binary, 0, (byte_size(FieldsVal)+1):8/signed, FieldsVal/binary, 0:8>>;
+                _ ->
+			        <<2, Key1/binary, 0, (byte_size(Val1)+1):32/little-signed, Val1/binary, 0:8>>
+            end
 	end;
 	
 %% NESTED OBJECT
 encode_key_value(Key, [{_,_}|_]=Val) ->
 	Key1 = encode_key(Key),
-	Val1 = encode(Val),
-	<<3, Key1/binary, 0, Val1/binary>>;
+	Val1 = encode_document(Val),
+	<<3, Key1/binary, 0, Val1/binary, 0:8>>;
 	
 %% DATA ARRAY
 encode_key_value(Key, {array, Val}) when is_list(Val) ->

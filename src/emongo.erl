@@ -30,7 +30,7 @@
          auth/3, find/2, find/3, find/4, find_all/2, find_all/3, find_all/4,
          get_more/4, get_more/5, find_one/3, find_one/4, kill_cursors/2,
 		 insert/3, update/4, update/5, update_sync/4, update_sync/5,
-		 delete/2, delete/3, ensure_index/3, count/2, dec2hex/1,
+		 delete/2, delete/3, ensure_index/3, count/2, count/4, dec2hex/1,
 		 hex2dec/1]).
 
 -include("emongo.hrl").
@@ -158,7 +158,13 @@ find(PoolId, Collection, Query) when is_record(Query, emo_query) ->
 %%		 Result = documents() | response()
 find(PoolId, Collection, Selector, Options) when ?IS_DOCUMENT(Selector), is_list(Options) ->
 	{Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
-	Query = create_query(Options, Selector),
+    Query = case proplists:is_defined(fields, Options) of
+        true ->
+	        Query1 = create_query(proplists:delete(fields,Options), Selector),
+            Query1#emo_query{field_selector=[{Field, 1} || Field <- proplists:get_value(fields, Options)]};
+        false ->
+	        create_query(Options, Selector)
+    end,
 	Packet = emongo_packet:do_query(Pool#pool.database, Collection, Pool#pool.req_id, Query),
 	Resp = emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, proplists:get_value(timeout, Options, ?TIMEOUT)),
 	case lists:member(response_options, Options) of
@@ -292,6 +298,18 @@ count(PoolId, Collection) ->
 			undefined
 	end.
 
+count(PoolId, Collection, [], []) ->
+    count(PoolId, Collection);
+count(PoolId, Collection, Selector, Options) ->
+    {Pid, Pool} = gen_server:call(?MODULE, {pid, PoolId}, infinity),
+    Query = create_query(Options ++ [{fields, []}, {limit, 1}], #emo_query{}, transform_selector(Selector), [{<<"count">>, Collection}]),
+	Packet = emongo_packet:do_query(Pool#pool.database, "$cmd", Pool#pool.req_id, Query),
+	case emongo_conn:send_recv(Pid, Pool#pool.req_id, Packet, ?TIMEOUT) of
+		#response{documents=[[{<<"n">>,Count}|_]]} ->
+			round(Count);
+		_ ->
+			undefined
+	end.
 %drop_collection(PoolId, Collection) when is_atom(PoolId), is_list(Collection) ->
 
 %%====================================================================
@@ -507,7 +525,11 @@ create_query([], QueryRec, [], OptDoc) ->
 	QueryRec#emo_query{q=OptDoc};
 	
 create_query([], QueryRec, QueryDoc, OptDoc) ->
-	QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}])};
+
+create_query([{fields, Fields}], QueryRec, QueryDoc, OptDoc) ->
+    QueryFields = [{Field, 1} || Field <- Fields],
+    QueryRec#emo_query{q=(OptDoc ++ [{<<"query">>, QueryDoc}] ++ [{<<"fields">>, QueryFields}])};
 	
 create_query([{limit, Limit}|Options], QueryRec, QueryDoc, OptDoc) ->
 	QueryRec1 = QueryRec#emo_query{limit=Limit},
@@ -523,8 +545,9 @@ create_query([{orderby, Orderby}|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc1);
 	
 create_query([{fields, Fields}|Options], QueryRec, QueryDoc, OptDoc) ->
-	QueryRec1 = QueryRec#emo_query{field_selector=[{Field, 1} || Field <- Fields]},
-	create_query(Options, QueryRec1, QueryDoc, OptDoc);
+    %% The fields document needs to be last
+    %% so it requires some special handling
+	create_query(proplists:delete(fields, Options) ++ [{fields, Fields}], QueryRec, QueryDoc, OptDoc);
 	
 create_query([_|Options], QueryRec, QueryDoc, OptDoc) ->
 	create_query(Options, QueryRec, QueryDoc, OptDoc).

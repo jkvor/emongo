@@ -51,14 +51,14 @@ do_query(Database, Collection, ReqID, Query) when is_record(Query, emo_query) ->
 		is_binary(Query#emo_query.q) -> Query#emo_query.q; 
 		true -> emongo_bson:encode(Query#emo_query.q)
 	end,
-	EncodedFieldSelector = if 
-		Query#emo_query.field_selector == [] -> <<>>; 
-		true -> emongo_bson:encode(Query#emo_query.field_selector) 
-	end,
-	Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
-				(Query#emo_query.offset):32/little-signed, 
-				(Query#emo_query.limit):32/little-signed, 
-				EncodedDocument/binary, EncodedFieldSelector/binary>>,
+    EncodedFieldSelector = if 
+        Query#emo_query.field_selector == [] -> <<>>; 
+        true -> emongo_bson:encode(Query#emo_query.field_selector) 
+    end,
+    Message = <<OptsSum:32/little-signed, FullName/binary, 0:8,
+                (Query#emo_query.offset):32/little-signed, 
+                (Query#emo_query.limit):32/little-signed, 
+                EncodedDocument/binary, EncodedFieldSelector/binary>>,
 	Length = byte_size(Message),
     <<(Length+16):32/little-signed, ReqID:32/little-signed, 0:32, ?OP_QUERY:32/little-signed, Message/binary>>.
 
